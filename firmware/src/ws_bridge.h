@@ -1,5 +1,7 @@
 #pragma once
 
+// JSON parser bridge that translates incoming WebSocket payloads into ControllerState.
+
 #include <ArduinoJson.h>
 
 #include "state_store.h"

@@ -1,5 +1,7 @@
 #pragma once
 
+// Wi-Fi mode manager for AP/STA/AP+STA setup, credential handling, and status.
+
 #include <WiFi.h>
 
 #include <stdint.h>

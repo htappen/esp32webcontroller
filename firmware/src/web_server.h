@@ -1,5 +1,7 @@
 #pragma once
 
+// HTTP and WebSocket front-end bridge for status APIs, control APIs, and input ingest.
+
 #include "host_connection.h"
 #include "network_manager.h"
 #include "state_store.h"

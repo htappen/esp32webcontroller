@@ -1,5 +1,7 @@
 #pragma once
 
+// Centralized firmware-level constants for networking, timing, and BLE identity.
+
 #include <stdint.h>
 
 enum class NetworkMode : uint8_t {

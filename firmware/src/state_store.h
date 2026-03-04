@@ -1,5 +1,7 @@
 #pragma once
 
+// Canonical in-memory controller state shared between transport and BLE tasks.
+
 #include <stdint.h>
 
 struct Buttons {

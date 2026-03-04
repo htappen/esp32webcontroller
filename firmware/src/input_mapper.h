@@ -1,5 +1,7 @@
 #pragma once
 
+// Maps normalized web controller state into BLE HID axis/button report values.
+
 #include <stdint.h>
 
 #include "state_store.h"

@@ -1,5 +1,7 @@
 #pragma once
 
+// BLE HID gamepad adapter used to publish mapped controller reports to a host.
+
 #include <stdint.h>
 
 #include <BleGamepad.h>
