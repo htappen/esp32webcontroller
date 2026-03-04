@@ -39,6 +39,12 @@
 - `seq` must increase monotonically.
 - Firmware drops invalid payloads and can emit debug counters.
 
+## Transport
+
+- Controller stream transport: WebSocket on `ws://<device-ip>:81`
+- Text frames contain one controller JSON packet per frame.
+- On disconnect or packet timeout (`kWsTimeoutMs`), firmware resets to neutral state.
+
 ## Control APIs
 
 ### `GET /api/status`
@@ -55,6 +61,10 @@
   "host": {
     "advertising": true,
     "connected": false
+  },
+  "controller": {
+    "wsConnected": true,
+    "lastPacketAgeMs": 8
   }
 }
 ```

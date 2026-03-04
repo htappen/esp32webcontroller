@@ -3,11 +3,13 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WebServer.h>
+#include <WebSocketsServer.h>
 
 #include "config.h"
 
 namespace {
 WebServer g_http(config::kHttpPort);
+WebSocketsServer g_ws(config::kWsPort);
 
 const char* mode_to_string(NetworkMode mode) {
   switch (mode) {
@@ -20,6 +22,7 @@ const char* mode_to_string(NetworkMode mode) {
   }
   return "unknown";
 }
+
 }  // namespace
 
 WebServerBridge::WebServerBridge(NetworkManager* network, HostConnectionManager* host, StateStore* state)
@@ -43,6 +46,8 @@ bool WebServerBridge::begin() {
     doc["network"]["staIp"] = ns.sta_ip.toString();
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
+    doc["controller"]["wsConnected"] = ws_client_connected_;
+    doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
 
     String payload;
     serializeJson(doc, payload);
@@ -126,15 +131,70 @@ bool WebServerBridge::begin() {
   });
 
   g_http.begin();
+  g_ws.begin();
+  g_ws.onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+    handleWsEvent(num, type, payload, length);
+  });
 
-  // TODO: setup WebSocket server and route incoming messages via ws_parser_ into state_.
   return true;
 }
 
 void WebServerBridge::loop() {
   g_http.handleClient();
+  g_ws.loop();
   // Keep manager state fresh even before server implementation lands.
   network_->loop();
   host_->loop();
-  (void)state_;
+
+  if (ws_client_connected_ && ws_last_packet_ms_ > 0) {
+    const uint32_t now = millis();
+    if (now - ws_last_packet_ms_ > config::kWsTimeoutMs) {
+      ws_client_connected_ = false;
+      state_->reset();
+    }
+  }
+}
+
+void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+  switch (type) {
+    case WStype_CONNECTED:
+      ws_client_connected_ = true;
+      ws_last_packet_ms_ = millis();
+      break;
+    case WStype_DISCONNECTED:
+      ws_client_connected_ = false;
+      ws_last_packet_ms_ = 0;
+      state_->reset();
+      break;
+    case WStype_TEXT: {
+      if (payload == nullptr || length == 0) {
+        return;
+      }
+      String message;
+      message.reserve(length + 1);
+      for (size_t i = 0; i < length; ++i) {
+        message += static_cast<char>(payload[i]);
+      }
+
+      ControllerState next;
+      if (!ws_parser_.parseJson(message.c_str(), &next)) {
+        return;
+      }
+      next.last_update_ms = millis();
+      if (state_->apply(next)) {
+        ws_last_packet_ms_ = next.last_update_ms;
+      }
+      break;
+    }
+    case WStype_BIN:
+    case WStype_PING:
+    case WStype_PONG:
+    case WStype_ERROR:
+    case WStype_FRAGMENT_TEXT_START:
+    case WStype_FRAGMENT_BIN_START:
+    case WStype_FRAGMENT:
+    case WStype_FRAGMENT_FIN:
+      break;
+  }
+  (void)num;
 }
