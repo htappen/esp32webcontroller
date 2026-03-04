@@ -8,6 +8,8 @@ build/
 dist/
 .pio/
 node_modules/
+.venv/
+.platformio/
 
 # Logs
 *.log
@@ -17,6 +19,3 @@ firmware/.pio/
 
 # Test artifacts
 coverage/
-
-# Binaries / libraries
-.venv/
