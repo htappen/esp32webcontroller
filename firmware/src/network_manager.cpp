@@ -5,6 +5,7 @@
 
 #include "config.h"
 
+// TODO: move this into a helpers header or use STL
 namespace {
 void copy_safe(char* dst, size_t dst_size, const char* src) {
   if (dst == nullptr || dst_size == 0) {

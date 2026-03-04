@@ -7,11 +7,18 @@
    - Added real advertise/connect/send-report path.
    - Compile verified with `PLATFORMIO_CORE_DIR=/home/htappen/controller/.platformio ./.venv/bin/pio run -d firmware`.
 
-2. [NEXT] Wire `virtual-gamepad-lib` into the embedded phone UI.
-   - Update `firmware/data/app.js` to emit real button/axis state.
-   - Keep existing JSON packet schema (`btn`, `ax`, `seq`, `t`).
+2. [DONE] Wire `virtual-gamepad-lib` into the embedded phone UI.
+   - Updated `firmware/data/app.js` to emit real button/axis state.
+   - Split frontend logic into separate module files:
+     - `firmware/data/gamepad_controller.js`
+     - `firmware/data/page_state_controller.js`
+     - thin bootstrap in `firmware/data/app.js`
+   - Refactored `app.js` to class-based design:
+     - `PageStateController` for page/network/host state and controls.
+     - `GamepadController` for virtual gamepad and WebSocket input streaming.
+   - Kept JSON packet schema (`btn`, `ax`, `seq`, `t`).
 
-3. Build and flash firmware + filesystem.
+3. [NEXT] Build and flash firmware + filesystem.
    - `source /home/htappen/controller/.venv/bin/activate`
    - `cd /home/htappen/controller/firmware && pio run -t uploadfs && pio run -t upload`
 

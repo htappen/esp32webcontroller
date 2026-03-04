@@ -22,6 +22,8 @@ popd >/dev/null
 
 mkdir -p "${VENDOR_DIR}"
 rm -rf "${VENDOR_DIR}/virtual-gamepad-lib"
-cp -R "${SUBMODULE_DIR}/dist" "${VENDOR_DIR}/virtual-gamepad-lib"
+mkdir -p "${VENDOR_DIR}/virtual-gamepad-lib"
+cp -R "${SUBMODULE_DIR}/dist/"* "${VENDOR_DIR}/virtual-gamepad-lib/"
+cp -R "${SUBMODULE_DIR}/gamepad_assets" "${VENDOR_DIR}/virtual-gamepad-lib/"
 
-echo "Synced virtual-gamepad-lib dist into ${VENDOR_DIR}/virtual-gamepad-lib"
+echo "Synced virtual-gamepad-lib modules and assets into ${VENDOR_DIR}/virtual-gamepad-lib"

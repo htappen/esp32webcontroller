@@ -23,6 +23,15 @@ const char* mode_to_string(NetworkMode mode) {
   return "unknown";
 }
 
+const char* mime_type_for_path(const String& path) {
+  if (path.endsWith(".js")) return "application/javascript";
+  if (path.endsWith(".css")) return "text/css";
+  if (path.endsWith(".svg")) return "image/svg+xml";
+  if (path.endsWith(".html")) return "text/html";
+  if (path.endsWith(".json")) return "application/json";
+  return "application/octet-stream";
+}
+
 }  // namespace
 
 WebServerBridge::WebServerBridge(NetworkManager* network, HostConnectionManager* host, StateStore* state)
@@ -117,17 +126,13 @@ bool WebServerBridge::begin() {
   });
 
   g_http.onNotFound([]() {
-    if (g_http.uri().startsWith("/vendor/")) {
-      File f = LittleFS.open(g_http.uri(), "r");
-      if (!f) {
-        g_http.send(404, "text/plain", "asset not found");
-        return;
-      }
-      g_http.streamFile(f, "application/octet-stream");
-      f.close();
+    File f = LittleFS.open(g_http.uri(), "r");
+    if (!f) {
+      g_http.send(404, "text/plain", "not found");
       return;
     }
-    g_http.send(404, "text/plain", "not found");
+    g_http.streamFile(f, mime_type_for_path(g_http.uri()));
+    f.close();
   });
 
   g_http.begin();
