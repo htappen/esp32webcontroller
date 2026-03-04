@@ -17,3 +17,6 @@ firmware/.pio/
 
 # Test artifacts
 coverage/
+
+# Binaries / libraries
+.venv/

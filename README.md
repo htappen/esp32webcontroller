@@ -11,6 +11,8 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
 - Host connectivity:
   - ESP32 advertises as BLE HID gamepad.
   - Host pairs to BLE controller and receives mapped controller reports.
+- Controller data path:
+  - Browser sends controller packets via WebSocket to `ws://<device-ip>:81`.
 
 ## Layout
 
@@ -22,20 +24,22 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
 
 ## Quick Start
 
-1. Install PlatformIO and ESP32 toolchain.
-2. Build firmware:
+1. Setup local dev environment:
+   - `./tools/setup_env.sh`
+2. Install PlatformIO and ESP32 toolchain.
+3. Build firmware:
    - `cd firmware && pio run`
-3. Upload filesystem assets:
+4. Upload filesystem assets:
    - `cd firmware && pio run -t uploadfs`
-4. Upload firmware:
+5. Upload firmware:
    - `cd firmware && pio run -t upload`
-5. Sync browser vendor assets from submodules:
+6. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
 
 ## Connection APIs (Scaffold)
 
 - `GET /api/status`:
-  - Returns current network mode/AP/STA status and host BLE status.
+  - Returns current network mode/AP/STA status, host BLE status, and WebSocket controller status.
 - `POST /api/network/sta`:
   - Body: `{ "ssid": "...", "pass": "..." }`
   - Stores STA credentials and starts shared Wi-Fi connection attempt.
