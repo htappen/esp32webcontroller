@@ -1,0 +1,6 @@
+[submodule "third_party/virtual-gamepad-lib"]
+	path = third_party/virtual-gamepad-lib
+	url = https://github.com/KW-M/virtual-gamepad-lib.git
+[submodule "third_party/ESP32-BLE-Gamepad"]
+	path = third_party/ESP32-BLE-Gamepad
+	url = https://github.com/lemmingDev/ESP32-BLE-Gamepad.git

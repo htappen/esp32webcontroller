@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ESP32 Controller</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main>
+      <h1>ESP32 Controller</h1>
+      <p id="status">Connecting...</p>
+      <section class="panel">
+        <h2>Network</h2>
+        <p id="network-status">Loading...</p>
+        <form id="sta-form">
+          <label>
+            SSID
+            <input id="sta-ssid" name="ssid" type="text" maxlength="32" />
+          </label>
+          <label>
+            Password
+            <input id="sta-pass" name="pass" type="password" maxlength="64" />
+          </label>
+          <button type="submit">Connect Shared Wi-Fi</button>
+        </form>
+      </section>
+      <section class="panel">
+        <h2>Host</h2>
+        <p id="host-status">Loading...</p>
+        <button id="pairing-toggle" type="button">Enable Pairing</button>
+      </section>
+      <div id="controller-root"></div>
+    </main>
+    <script src="/vendor/virtual-gamepad-lib.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

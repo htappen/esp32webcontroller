@@ -1,0 +1,50 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+main {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+#controller-root {
+  min-height: 320px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.panel {
+  margin: 12px 0;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+label {
+  display: block;
+  margin: 8px 0;
+}
+
+input {
+  width: 100%;
+  max-width: 360px;
+  display: block;
+  margin-top: 4px;
+  padding: 8px;
+}
+
+button {
+  margin-top: 8px;
+  padding: 8px 12px;
+}

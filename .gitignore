@@ -1,0 +1,19 @@
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+.pio/
+node_modules/
+
+# Logs
+*.log
+
+# PlatformIO
+firmware/.pio/
+
+# Test artifacts
+coverage/
