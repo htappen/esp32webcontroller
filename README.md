@@ -28,12 +28,14 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
    - `./tools/setup_env.sh`
 2. Install PlatformIO and ESP32 toolchain.
 3. Build firmware:
-   - `cd firmware && pio run`
+   - `cd firmware && pio run -e esp32_wroom_32d`
 4. Upload filesystem assets:
-   - `cd firmware && pio run -t uploadfs`
+   - `./tools/upload_firmware.sh /dev/ttyUSB0`
 5. Upload firmware:
-   - `cd firmware && pio run -t upload`
-6. Sync browser vendor assets from submodules:
+   - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
+6. Open serial monitor if needed:
+   - `./tools/serial_monitor.sh /dev/ttyUSB0`
+7. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
 
 ## Connection APIs (Scaffold)
