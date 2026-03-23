@@ -18,3 +18,9 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 
 - Expected serial ports are typically `/dev/ttyUSB*` or `/dev/ttyACM*` on Linux and `/dev/cu.usbserial-*` on macOS.
 - Many USB-to-UART boards auto-reset for flashing, but some require holding `BOOT` while tapping `EN` or `RESET`.
+
+## Integration Checks
+
+- `./tools/upload_firmware.sh [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state.
+- `./tools/capture_boot_log.sh [port] [seconds]` toggles reset over serial control lines and captures the boot log.
+- `./tools/hardware_integration_test.sh [port]` rebuilds, flashes, captures boot logs, and fails if the boot banner is missing or BLE advertising starts before NimBLE host sync.

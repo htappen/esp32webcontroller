@@ -2,20 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIRMWARE_DIR="${ROOT_DIR}/firmware"
-VENV_DIR="${ROOT_DIR}/.venv"
-PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
-PORT="${1:-${PIO_UPLOAD_PORT:-}}"
-
-if [[ ! -d "${VENV_DIR}" ]]; then
-  printf '[monitor] missing virtual environment at %s\n' "${VENV_DIR}" >&2
-  exit 1
-fi
-
 # shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
+source "${ROOT_DIR}/tools/lib/esp32_common.sh"
+PORT="${1:-}"
 
-export PLATFORMIO_CORE_DIR
+activate_platformio_env
+PORT="$(resolve_serial_port "${PORT}" || true)"
 
 cd "${FIRMWARE_DIR}"
 if [[ -n "${PORT}" ]]; then

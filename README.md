@@ -35,7 +35,9 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
    - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
 6. Open serial monitor if needed:
    - `./tools/serial_monitor.sh /dev/ttyUSB0`
-7. Sync browser vendor assets from submodules:
+7. Run the hardware startup integration check on an attached board:
+   - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
+8. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
 
 ## Connection APIs (Scaffold)

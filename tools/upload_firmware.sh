@@ -2,22 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIRMWARE_DIR="${ROOT_DIR}/firmware"
-VENV_DIR="${ROOT_DIR}/.venv"
-PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
-UPLOAD_PORT="${1:-${PIO_UPLOAD_PORT:-}}"
-DEFAULT_ENV="esp32_wroom_32d"
+# shellcheck disable=SC1091
+source "${ROOT_DIR}/tools/lib/esp32_common.sh"
 
-detect_serial_port() {
-  local port
-  for port in /dev/ttyUSB* /dev/ttyACM* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART /dev/cu.wchusbserial*; do
-    if [[ -e "${port}" ]]; then
-      printf '%s\n' "${port}"
-      return 0
-    fi
-  done
-  return 1
-}
+UPLOAD_PORT="${1:-}"
 
 log() {
   printf '[upload] %s\n' "$1"
@@ -31,20 +19,10 @@ pio_run() {
   fi
 }
 
-if [[ ! -d "${VENV_DIR}" ]]; then
-  log "missing virtual environment at ${VENV_DIR}"
-  exit 1
-fi
-
-# shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
-
-export PLATFORMIO_CORE_DIR
+activate_platformio_env
 
 log "using PlatformIO core dir: ${PLATFORMIO_CORE_DIR}"
-if [[ -z "${UPLOAD_PORT}" ]]; then
-  UPLOAD_PORT="$(detect_serial_port || true)"
-fi
+UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
   log "using upload port: ${UPLOAD_PORT}"
