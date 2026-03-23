@@ -26,6 +26,7 @@ void setup() {
 }
 
 void loop() {
+  g_host.loop();
   g_web.loop();
 
   const uint32_t now = millis();

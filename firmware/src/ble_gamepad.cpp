@@ -1,5 +1,6 @@
 #include "ble_gamepad.h"
 
+#include <Arduino.h>
 #include <NimBLEDevice.h>
 
 #include "config.h"
@@ -8,6 +9,8 @@ namespace {
 constexpr int16_t kAxisMin = -32767;
 constexpr int16_t kAxisMax = 32767;
 constexpr int16_t kTriggerMax = 32767;
+constexpr uint32_t kAdvertisingInitialDelayMs = 1000;
+constexpr uint32_t kAdvertisingRetryMs = 1000;
 }  // namespace
 
 BleGamepadBridge::BleGamepadBridge() : ble_(config::kBleDeviceName, "ESP32 Web BLE Controller", 100, true) {}
@@ -26,8 +29,35 @@ bool BleGamepadBridge::begin() {
 
   ble_.begin(&cfg);
   started_ = true;
-  setAdvertisingEnabled(advertising_enabled_);
+  next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
   return true;
+}
+
+void BleGamepadBridge::loop() {
+  if (!started_) {
+    return;
+  }
+
+  if (!advertising_enabled_ || ble_.isConnected()) {
+    return;
+  }
+
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (advertising == nullptr || advertising->isAdvertising()) {
+    return;
+  }
+
+  const uint32_t now = millis();
+  if (static_cast<int32_t>(now - next_advertising_attempt_ms_) < 0) {
+    return;
+  }
+
+  if (advertising->start()) {
+    next_advertising_attempt_ms_ = now;
+    return;
+  }
+
+  next_advertising_attempt_ms_ = now + kAdvertisingRetryMs;
 }
 
 bool BleGamepadBridge::connected() {
@@ -36,6 +66,7 @@ bool BleGamepadBridge::connected() {
 
 void BleGamepadBridge::setAdvertisingEnabled(bool enabled) {
   advertising_enabled_ = enabled;
+  next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
   if (!started_) {
     return;
   }
@@ -46,9 +77,7 @@ void BleGamepadBridge::setAdvertisingEnabled(bool enabled) {
   }
 
   if (enabled) {
-    if (!ble_.isConnected()) {
-      advertising->start();
-    }
+    return;
   } else {
     advertising->stop();
   }

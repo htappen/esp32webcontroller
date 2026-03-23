@@ -12,6 +12,7 @@ class BleGamepadBridge {
  public:
   BleGamepadBridge();
   bool begin();
+  void loop();
   bool connected();
   void setAdvertisingEnabled(bool enabled);
   bool advertisingEnabled() const;
@@ -24,4 +25,5 @@ class BleGamepadBridge {
   BleGamepad ble_;
   bool started_ = false;
   bool advertising_enabled_ = true;
+  uint32_t next_advertising_attempt_ms_ = 0;
 };

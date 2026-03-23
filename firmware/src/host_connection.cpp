@@ -11,6 +11,7 @@ bool HostConnectionManager::begin() {
 }
 
 void HostConnectionManager::loop() {
+  ble_.loop();
   status_.connected = ble_.connected();
   status_.advertising = ble_.advertisingEnabled();
 }
