@@ -47,6 +47,7 @@ bool WebServerBridge::begin() {
     JsonDocument doc;
     const NetworkStatus ns = network_->status();
     const HostStatus hs = host_->status();
+    const ControllerState controller = state_->snapshot();
 
     doc["network"]["mode"] = mode_to_string(ns.mode);
     doc["network"]["apActive"] = ns.ap_active;
@@ -57,6 +58,21 @@ bool WebServerBridge::begin() {
     doc["host"]["connected"] = hs.connected;
     doc["controller"]["wsConnected"] = ws_client_connected_;
     doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
+    doc["controller"]["seq"] = controller.seq;
+    doc["controller"]["t"] = controller.t;
+    doc["controller"]["btn"]["a"] = controller.btn.a;
+    doc["controller"]["btn"]["b"] = controller.btn.b;
+    doc["controller"]["btn"]["x"] = controller.btn.x;
+    doc["controller"]["btn"]["y"] = controller.btn.y;
+    doc["controller"]["ax"]["lx"] = controller.ax.lx;
+    doc["controller"]["ax"]["ly"] = controller.ax.ly;
+    doc["controller"]["ax"]["rx"] = controller.ax.rx;
+    doc["controller"]["ax"]["ry"] = controller.ax.ry;
+    doc["controller"]["ax"]["lt"] = controller.ax.lt;
+    doc["controller"]["ax"]["rt"] = controller.ax.rt;
+    doc["controller"]["debug"]["wsPacketsReceived"] = ws_packets_received_;
+    doc["controller"]["debug"]["wsPacketsApplied"] = ws_packets_applied_;
+    doc["controller"]["debug"]["wsPacketsRejected"] = ws_packets_rejected_;
 
     String payload;
     serializeJson(doc, payload);
@@ -175,6 +191,7 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
       if (payload == nullptr || length == 0) {
         return;
       }
+      ++ws_packets_received_;
       String message;
       message.reserve(length + 1);
       for (size_t i = 0; i < length; ++i) {
@@ -183,11 +200,15 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
 
       ControllerState next;
       if (!ws_parser_.parseJson(message.c_str(), &next)) {
+        ++ws_packets_rejected_;
         return;
       }
       next.last_update_ms = millis();
       if (state_->apply(next)) {
         ws_last_packet_ms_ = next.last_update_ms;
+        ++ws_packets_applied_;
+      } else {
+        ++ws_packets_rejected_;
       }
       break;
     }

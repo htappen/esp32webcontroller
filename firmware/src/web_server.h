@@ -23,4 +23,7 @@ class WebServerBridge {
   WsBridge ws_parser_;
   bool ws_client_connected_ = false;
   uint32_t ws_last_packet_ms_ = 0;
+  uint32_t ws_packets_received_ = 0;
+  uint32_t ws_packets_applied_ = 0;
+  uint32_t ws_packets_rejected_ = 0;
 };

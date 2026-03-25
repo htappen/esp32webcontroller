@@ -37,7 +37,11 @@ else
   fi
   log "connecting ${IFACE} to ${SSID}"
   nmcli_cmd radio wifi on
-  nmcli_cmd --wait 20 device wifi connect "${SSID}" password "${PASS}" ifname "${IFACE}"
+  if ! nmcli_cmd --wait 20 device wifi connect "${SSID}" password "${PASS}" ifname "${IFACE}"; then
+    log "retrying ${SSID} with a fresh NetworkManager profile"
+    nmcli_cmd connection delete "${SSID}" >/dev/null 2>&1 || true
+    nmcli_cmd --wait 20 device wifi connect "${SSID}" password "${PASS}" ifname "${IFACE}"
+  fi
 fi
 
 for _ in $(seq 1 10); do

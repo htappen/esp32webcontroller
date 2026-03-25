@@ -1,5 +1,26 @@
 #include "ws_bridge.h"
 
+namespace {
+bool parse_button(JsonVariantConst value) {
+  if (value.is<bool>()) {
+    return value.as<bool>();
+  }
+  if (value.is<int>()) {
+    return value.as<int>() != 0;
+  }
+  if (value.is<unsigned int>()) {
+    return value.as<unsigned int>() != 0;
+  }
+  if (value.is<long>()) {
+    return value.as<long>() != 0;
+  }
+  if (value.is<unsigned long>()) {
+    return value.as<unsigned long>() != 0;
+  }
+  return false;
+}
+}  // namespace
+
 bool WsBridge::parseJson(const char* payload, ControllerState* out) const {
   if (payload == nullptr || out == nullptr) {
     return false;
@@ -16,20 +37,20 @@ bool WsBridge::parseJson(const char* payload, ControllerState* out) const {
   state.seq = doc["seq"] | 0;
 
   JsonVariantConst btn = doc["btn"];
-  state.btn.a = btn["a"] | false;
-  state.btn.b = btn["b"] | false;
-  state.btn.x = btn["x"] | false;
-  state.btn.y = btn["y"] | false;
-  state.btn.lb = btn["lb"] | false;
-  state.btn.rb = btn["rb"] | false;
-  state.btn.back = btn["back"] | false;
-  state.btn.start = btn["start"] | false;
-  state.btn.ls = btn["ls"] | false;
-  state.btn.rs = btn["rs"] | false;
-  state.btn.du = btn["du"] | false;
-  state.btn.dd = btn["dd"] | false;
-  state.btn.dl = btn["dl"] | false;
-  state.btn.dr = btn["dr"] | false;
+  state.btn.a = parse_button(btn["a"]);
+  state.btn.b = parse_button(btn["b"]);
+  state.btn.x = parse_button(btn["x"]);
+  state.btn.y = parse_button(btn["y"]);
+  state.btn.lb = parse_button(btn["lb"]);
+  state.btn.rb = parse_button(btn["rb"]);
+  state.btn.back = parse_button(btn["back"]);
+  state.btn.start = parse_button(btn["start"]);
+  state.btn.ls = parse_button(btn["ls"]);
+  state.btn.rs = parse_button(btn["rs"]);
+  state.btn.du = parse_button(btn["du"]);
+  state.btn.dd = parse_button(btn["dd"]);
+  state.btn.dl = parse_button(btn["dl"]);
+  state.btn.dr = parse_button(btn["dr"]);
 
   JsonVariantConst ax = doc["ax"];
   state.ax.lx = ax["lx"] | 0.0f;

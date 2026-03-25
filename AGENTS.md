@@ -37,16 +37,16 @@
    - Added `docs/raspberry-pi-4-setup.md` with concrete Pi 4 setup and SSH coordination steps.
    - Added `tools/create_pi_ssh_key.sh` to generate the ChromeOS-side SSH key used by the Pi test runner.
 
-8. [IN PROGRESS] Implement the Raspberry Pi automated end-to-end host test route.
+8. [DONE] Implement the Raspberry Pi automated end-to-end host test route.
    - Added Pi-side scripts for Wi-Fi AP join, BLE pairing, Linux input capture, WebSocket packet send, and SSH-driven orchestration under `tools/pi/`.
    - Added a Pi-side BlueZ D-Bus pairing agent path (`tools/pi/bluez_pair_gamepad.py`) because non-interactive `bluetoothctl` pairing was not reliable over SSH.
    - Verified on `controller-pi` that the Pi can join `ESP32-Controller`, pair and bond to `ESP32 Web Gamepad`, and expose the BLE host device as `/dev/input/event4`, `/dev/input/js0`, and `/dev/hidraw0`.
    - Verified the local build/flash/startup path still works end to end with `tools/pi/run_remote_e2e.sh` calling the existing hardware integration flow on `/dev/ttyACM0`.
-   - Current blocker: the direct WebSocket E2E path reaches the ESP32 (`/api/status` shows `wsConnected: true` while packets are in flight), but the Pi still sees neutral HID/input reports, so the first button assertion fails.
-   - Current next step: debug the firmware WebSocket-to-BLE report path so accepted controller packets produce non-neutral HID reports on the paired Pi host.
+   - Fixed the firmware WebSocket button parser so `0/1` button values are applied correctly before BLE report generation.
+   - Verified the direct WebSocket E2E path passes on hardware from `controller-pi`: neutral packet, button press, axis movement, and timeout-to-neutral assertions all pass.
    - Add browser-driven Playwright coverage only after the direct WebSocket E2E path is stable.
 
-9. Harden board-specific reliability.
+9. [NEXT] Harden board-specific reliability.
    - Add reconnect/backoff behavior for Wi-Fi and BLE on classic ESP32.
    - Maintain neutral output on disconnect or stalled controller input.
    - Persist settings in NVS/Preferences once the hardware path is stable.
