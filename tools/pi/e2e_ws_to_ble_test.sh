@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AP_SSID="${AP_SSID:-ESP32-Controller}"
+AP_PASS="${AP_PASS:-controller123}"
+BLE_NAME="${BLE_NAME:-ESP32 Web Gamepad}"
+HTTP_BASE_URL="${HTTP_BASE_URL:-http://192.168.4.1}"
+WS_URL="${WS_URL:-ws://192.168.4.1:81}"
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "${TMP_DIR}"
+}
+trap cleanup EXIT
+
+log() {
+  printf '[pi-e2e] %s\n' "$1"
+}
+
+fail() {
+  printf '[pi-e2e] %s\n' "$1" >&2
+  exit 1
+}
+
+capture_case() {
+  local name="$1"
+  local duration="$2"
+  local packet_file="$3"
+  local hold_open="$4"
+  local log_file="${TMP_DIR}/${name}.jsonl"
+
+  "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --duration "${duration}" --output "${log_file}" &
+  local capture_pid=$!
+  sleep 0.2
+  python3 "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}"
+  wait "${capture_pid}"
+  printf '%s\n' "${log_file}"
+}
+
+"${SCRIPT_DIR}/bootstrap_pi.sh"
+"${SCRIPT_DIR}/check_wifi_ap.sh" "${AP_SSID}" "${AP_PASS}"
+"${SCRIPT_DIR}/check_bluetooth.sh"
+
+log "waiting for ESP32 HTTP status endpoint"
+curl --fail --silent --show-error "${HTTP_BASE_URL}/api/status" > "${TMP_DIR}/status.json"
+python3 - "${TMP_DIR}/status.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    status = json.load(handle)
+
+if status["network"]["apIp"] != "192.168.4.1":
+    raise SystemExit("unexpected AP IP")
+print(json.dumps(status, separators=(",", ":")))
+PY
+
+PAIR_OUTPUT="$("${SCRIPT_DIR}/pair_ble_gamepad.sh" "${BLE_NAME}")"
+printf '%s\n' "${PAIR_OUTPUT}"
+EVENT_DEVICE="$(python3 "${SCRIPT_DIR}/capture_input_events.py" --device-name "${BLE_NAME}" --wait-timeout 10 --print-device)"
+log "using input event device ${EVENT_DEVICE}"
+
+cat > "${TMP_DIR}/neutral.json" <<'JSON'
+{"t":1,"seq":1,"btn":{"a":0,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
+JSON
+cat > "${TMP_DIR}/button_a.json" <<'JSON'
+{"t":2,"seq":2,"btn":{"a":1,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
+JSON
+cat > "${TMP_DIR}/axis_lx.json" <<'JSON'
+{"t":3,"seq":3,"btn":{"a":0,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":1.0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
+JSON
+cat > "${TMP_DIR}/timeout_press.json" <<'JSON'
+{"t":4,"seq":4,"btn":{"a":1,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":1.0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
+JSON
+
+log "asserting neutral packet does not press buttons"
+neutral_log="$(capture_case neutral 1.0 "${TMP_DIR}/neutral.json" 0.6)"
+python3 "${SCRIPT_DIR}/assert_input_events.py" --file "${neutral_log}" --forbid-keydown
+
+log "asserting A button packet produces BTN_SOUTH press"
+button_log="$(capture_case button_a 1.2 "${TMP_DIR}/button_a.json" 0.9)"
+python3 "${SCRIPT_DIR}/assert_input_events.py" --file "${button_log}" --expect-key 304=1
+
+log "asserting left-stick X packet produces positive ABS_X movement"
+axis_log="$(capture_case axis_lx 1.2 "${TMP_DIR}/axis_lx.json" 0.9)"
+python3 "${SCRIPT_DIR}/assert_input_events.py" --file "${axis_log}" --expect-abs-range 0:20000:32767
+
+log "asserting packet timeout returns controls to neutral"
+timeout_log="$(capture_case timeout_reset 1.7 "${TMP_DIR}/timeout_press.json" 1.2)"
+python3 "${SCRIPT_DIR}/assert_input_events.py" --file "${timeout_log}" --expect-key 304=1 --expect-key 304=0 --expect-abs-range 0:20000:32767 --expect-abs-range 0:0:0
+
+log "Pi direct WebSocket to BLE test passed"
