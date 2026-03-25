@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AP_SSID="${AP_SSID:-ESP32-Controller}"
-AP_PASS="${AP_PASS:-controller123}"
+AP_PASS="${AP_PASS:-}"
 BLE_NAME="${BLE_NAME:-ESP32 Web Gamepad}"
 HTTP_BASE_URL="${HTTP_BASE_URL:-http://192.168.4.1}"
 WS_URL="${WS_URL:-ws://192.168.4.1:81}"

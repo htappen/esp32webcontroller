@@ -12,7 +12,7 @@ enum class NetworkMode : uint8_t {
 
 namespace config {
 static constexpr char kApSsid[] = "ESP32-Controller";
-static constexpr char kApPass[] = "controller123";
+static constexpr char kApPass[] = "";
 static constexpr NetworkMode kDefaultNetworkMode = NetworkMode::kApSta;
 static constexpr uint16_t kHttpPort = 80;
 static constexpr uint16_t kWsPort = 81;

@@ -26,19 +26,21 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
 
 1. Setup local dev environment:
    - `./tools/setup_env.sh`
-2. Install PlatformIO and ESP32 toolchain.
-3. Build firmware:
-   - `cd firmware && pio run -e esp32_wroom_32d`
-4. Upload filesystem assets:
-   - `./tools/upload_firmware.sh /dev/ttyUSB0`
-5. Upload firmware:
-   - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
-6. Open serial monitor if needed:
-   - `./tools/serial_monitor.sh /dev/ttyUSB0`
-7. Run the hardware startup integration check on an attached board:
-   - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
-8. Sync browser vendor assets from submodules:
+2. Initialize git submodules:
+   - `git submodule update --init --recursive`
+3. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
+4. Install PlatformIO and ESP32 toolchain.
+5. Build firmware:
+   - `cd firmware && pio run -e esp32_wroom_32d`
+6. Upload filesystem assets:
+   - `./tools/upload_firmware.sh /dev/ttyUSB0`
+7. Upload firmware:
+   - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
+8. Open serial monitor if needed:
+   - `./tools/serial_monitor.sh /dev/ttyUSB0`
+9. Run the hardware startup integration check on an attached board:
+   - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
 
 ## End User Guide
 
@@ -53,7 +55,7 @@ Use this section if the board is already flashed and you just want to connect an
 ### Default Device Names
 
 - Wi-Fi network: `ESP32-Controller`
-- Wi-Fi password: `controller123`
+- Wi-Fi security: open network, no password
 - Controller page: `http://192.168.4.1`
 - Bluetooth controller name: `ESP32 Web Gamepad`
 
@@ -61,7 +63,7 @@ Use this section if the board is already flashed and you just want to connect an
 
 1. Power the flashed ESP32 board over USB.
 2. On the device you want to control, open Bluetooth settings and pair to `ESP32 Web Gamepad`.
-3. On your phone, join the Wi-Fi network `ESP32-Controller` using password `controller123`.
+3. On your phone, join the Wi-Fi network `ESP32-Controller`.
 4. Open a browser on the phone and go to `http://192.168.4.1`.
 5. Wait for the controller page to load, then keep that tab open and in the foreground while you play.
 6. Use the on-screen controls on the phone; the paired host should receive them as a Bluetooth gamepad.
@@ -99,4 +101,17 @@ After cloning:
 
 ```bash
 git submodule update --init --recursive
+```
+
+Then sync the browser assets used by the embedded web UI:
+
+```bash
+./tools/sync_vendor_assets.sh
+```
+
+The repo intentionally does not track copied vendor output under `firmware/data/vendor/`.
+If you need to rebuild the submodule's dist files first, run:
+
+```bash
+./tools/sync_vendor_assets.sh --build
 ```
