@@ -20,3 +20,6 @@ firmware/.pio/
 
 # Test artifacts
 coverage/
+
+# Local test secrets
+tools/pi/local.env
