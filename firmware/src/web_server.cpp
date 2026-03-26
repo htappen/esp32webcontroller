@@ -1,6 +1,7 @@
 #include "web_server.h"
 
 #include <Arduino.h>
+#include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
@@ -42,6 +43,13 @@ bool WebServerBridge::begin() {
     return false;
   }
   LittleFS.begin(true);
+  if (MDNS.begin(config::kApHostname)) {
+    MDNS.setInstanceName(config::kMdnsInstanceName);
+    MDNS.addService("http", "tcp", config::kHttpPort);
+    MDNS.addService("ws", "tcp", config::kWsPort);
+  } else {
+    Serial.println("mDNS start failed");
+  }
 
   g_http.on("/api/status", HTTP_GET, [this]() {
     JsonDocument doc;

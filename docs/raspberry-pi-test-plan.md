@@ -29,7 +29,7 @@ The test should be runnable remotely from the ChromeOS development machine over 
 ### Data Plane
 
 - Pi joins ESP32 AP `ESP32-Controller`.
-- Pi opens the controller web UI at `http://192.168.4.1`.
+- Pi opens the controller web UI at `http://game.local`.
 - Pi pairs to BLE device `ESP32 Web Gamepad`.
 - Pi injects UI input and records Linux input events from the BLE gamepad device.
 
@@ -65,9 +65,10 @@ Flow:
 
 1. Join ESP32 AP.
 2. Pair to the BLE gamepad.
-3. Start input capture on the Pi.
-4. Send known controller packets to `ws://192.168.4.1:81`.
-5. Assert corresponding Linux input events arrive.
+3. Confirm `http://192.168.4.1/api/status` and `http://game.local/api/status` return equivalent controller status.
+4. Start input capture on the Pi.
+5. Send known controller packets to `ws://game.local:81`.
+6. Assert corresponding Linux input events arrive.
 
 Pass criteria:
 
@@ -82,22 +83,23 @@ Add browser automation so the test covers the served web UI as well.
 
 Deliverables:
 
-- `test/pi/playwright.config.*`
-- `test/pi/controller_ui.spec.*`
+- `tools/pi/browser_ui_test.py`
 - `tools/pi/e2e_browser_test.sh`
 
 Flow:
 
-1. Start Chromium/Playwright on the Pi over SSH.
-2. Open `http://192.168.4.1`.
-3. Drive the on-screen controller with Playwright pointer/touch actions.
-4. Assert matching Linux input events from the BLE device.
+1. Recreate a repo-managed Python venv on the Pi for all Pi-side Python helpers and install the Python test requirements there.
+2. Start headless Chromium on the Pi from that venv-backed harness.
+3. Open `http://game.local`.
+4. Drive the on-screen controller with browser automation against the actual SVG tap targets.
+5. Assert matching Linux input events from the BLE device.
 
 Pass criteria:
 
 - Page loads successfully from the ESP32.
 - WebSocket connection becomes active.
-- UI gestures produce expected BLE host events.
+- Clicking the on-screen A button produces a WebSocket payload with `btn.a = 1`.
+- The same on-screen A button click produces the expected BLE host button event.
 
 ## Repo Changes Needed
 
@@ -111,6 +113,7 @@ Pass criteria:
 - `tools/pi/pair_ble_gamepad.sh`
 - `tools/pi/e2e_ws_to_ble_test.sh`
 - `tools/pi/e2e_browser_test.sh`
+- `tools/pi/browser_ui_test.py`
 
 ### New Test Area
 

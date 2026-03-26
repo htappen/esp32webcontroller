@@ -16,4 +16,9 @@ pageController = new PageStateController({
   }),
 });
 
+window.__controllerApp = {
+  pageController,
+  gamepadController: pageController.gamepadController,
+};
+
 pageController.start();

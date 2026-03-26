@@ -119,7 +119,9 @@ If the browser route needs a virtual display in headless SSH sessions, also inst
 sudo apt install -y xvfb
 ```
 
-If Playwright is used later, install Node.js by the method chosen for the repo and then install Playwright browser dependencies.
+The checked-in Pi test harness uses a repo-managed Python venv on the Pi instead of global `pip` installs. The test wrappers recreate that venv automatically through `tools/pi/setup_python_harness.sh`.
+
+That venv is created with `--system-site-packages` so the repo-managed environment can still use apt-provided BlueZ bindings such as `dbus` and `gi` while keeping the repo's Python entrypoints inside one venv.
 
 ## Step 6: Enable Required Services
 
@@ -193,7 +195,7 @@ Expected outcome:
 Once the ESP32 is powered:
 
 1. On the Pi, join Wi-Fi `ESP32-Controller`.
-2. Confirm `http://192.168.4.1` opens in Chromium or via `curl`.
+2. Confirm `http://game.local` opens in Chromium or via `curl`.
 3. Use `bluetoothctl scan on` and look for `ESP32 Web Gamepad`.
 
 This confirms the Pi can act as both test browser host and BLE receiver.

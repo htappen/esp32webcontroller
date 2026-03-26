@@ -19,6 +19,11 @@ require_cmd bluetoothctl
 require_cmd curl
 require_cmd sudo
 
+if ! python3 -m venv -h >/dev/null 2>&1; then
+  printf '[pi-bootstrap] python3 venv module is not available\n' >&2
+  exit 1
+fi
+
 log "ensuring bluetooth service is running"
 sudo systemctl start bluetooth
 

@@ -56,6 +56,7 @@ bool NetworkManager::connectSta() {
     return false;
   }
 
+  WiFi.setHostname(config::kApHostname);
   WiFi.mode(status_.mode == NetworkMode::kApSta ? WIFI_AP_STA : WIFI_STA);
   WiFi.begin(status_.sta_ssid, sta_pass_);
   sta_connect_started_ms_ = millis();
@@ -63,6 +64,7 @@ bool NetworkManager::connectSta() {
 }
 
 void NetworkManager::startAp() {
+  WiFi.softAPsetHostname(config::kApHostname);
   const bool ok = WiFi.softAP(config::kApSsid, config::kApPass);
   status_.ap_active = ok;
   if (ok) {

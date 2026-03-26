@@ -41,7 +41,7 @@
 
 ## Transport
 
-- Controller stream transport: WebSocket on `ws://<device-ip>:81`
+- Controller stream transport: WebSocket on `ws://game.local:81` by default
 - Text frames contain one controller JSON packet per frame.
 - On disconnect or packet timeout (`kWsTimeoutMs`), firmware resets to neutral state.
 
@@ -55,7 +55,7 @@
     "mode": "ap|sta|apsta",
     "apActive": true,
     "staConnected": false,
-    "apIp": "192.168.4.1",
+    "apIp": "<ap-ip>",
     "staIp": "0.0.0.0"
   },
   "host": {
