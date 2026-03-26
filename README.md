@@ -37,9 +37,7 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
    - `./tools/upload_firmware.sh /dev/ttyUSB0`
 7. Upload firmware:
    - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
-8. Open serial monitor if needed:
-   - `./tools/serial_monitor.sh /dev/ttyUSB0`
-9. Run the hardware startup integration check on an attached board:
+8. Run the hardware startup integration check on an attached board:
    - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
 
 ## End User Guide
