@@ -126,18 +126,6 @@ bool WebServerBridge::begin() {
     g_http.send(202, "application/json", "{\"ok\":true,\"status\":\"connecting\"}");
   });
 
-  g_http.on("/api/host/pairing", HTTP_POST, [this]() {
-    JsonDocument req;
-    if (deserializeJson(req, g_http.arg("plain")) != DeserializationError::Ok) {
-      g_http.send(400, "application/json", "{\"error\":\"invalid_json\"}");
-      return;
-    }
-
-    const bool enabled = req["enabled"] | true;
-    host_->setPairingEnabled(enabled);
-    g_http.send(200, "application/json", "{\"ok\":true}");
-  });
-
   g_http.on("/", HTTP_GET, []() {
     File f = LittleFS.open("/index.html", "r");
     if (!f) {

@@ -16,50 +16,50 @@ function getCookie(name) {
 function formatNetworkStatus(net) {
   const state = net.connectionState || 'unknown';
   const detailParts = [];
+
   if (net.staConnecting) {
-    detailParts.push(`trying ${net.candidateStaSsid || net.savedStaSsid || 'saved Wi-Fi'}`);
+    detailParts.push(`Trying ${net.candidateStaSsid || net.savedStaSsid || 'saved Wi-Fi'}.`);
   } else if (net.staConnected) {
-    detailParts.push(`connected to ${net.activeStaSsid || net.savedStaSsid || 'shared Wi-Fi'}`);
+    detailParts.push(`Connected to ${net.activeStaSsid || net.savedStaSsid || 'shared Wi-Fi'}.`);
   } else if (net.apFallbackActive) {
-    detailParts.push('ESP32 fallback AP available');
+    detailParts.push('Fallback AP available.');
   } else if (!net.hasSavedStaConfig) {
-    detailParts.push('no saved shared Wi-Fi yet');
+    detailParts.push('No saved shared Wi-Fi yet.');
   }
 
   if (net.apActive && net.apIp) {
-    detailParts.push(`AP ${net.apIp}`);
+    detailParts.push(`AP ${net.apIp}.`);
   }
   if (net.staConnected && net.staIp) {
-    detailParts.push(`STA ${net.staIp}`);
+    detailParts.push(`STA ${net.staIp}.`);
   }
   if (net.lastCandidateFailed) {
-    detailParts.push('last Wi-Fi update failed, previous saved network kept');
+    detailParts.push('Last Wi-Fi update failed and the previous network was kept.');
   }
 
-  return `${state.replaceAll('_', ' ')}${detailParts.length ? ' | ' : ''}${detailParts.join(' | ')}`;
+  const label = state.replaceAll('_', ' ');
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}${detailParts.length ? '  ' : ''}${detailParts.join(' ')}`;
 }
 
 export class PageStateController {
   constructor(opts) {
-    this.statusEl = opts.statusEl;
+    this.apiBase = opts.apiBase || '';
     this.networkStatusEl = opts.networkStatusEl;
     this.hostStatusEl = opts.hostStatusEl;
+    this.transportStatusEl = opts.transportStatusEl;
     this.layoutStatusEl = opts.layoutStatusEl;
     this.staForm = opts.staForm;
     this.layoutSelectEl = opts.layoutSelectEl;
-    this.pairingToggleEl = opts.pairingToggleEl;
     this.configOpenEl = opts.configOpenEl;
     this.configCloseEl = opts.configCloseEl;
     this.configBackdropEl = opts.configBackdropEl;
     this.configModalEl = opts.configModalEl;
     this.gamepadController = opts.gamepadController;
-    this.pairingEnabled = true;
   }
 
   async start() {
     this.staForm.addEventListener('submit', (event) => this.onStaSubmit(event));
     this.layoutSelectEl.addEventListener('change', (event) => this.onLayoutChange(event));
-    this.pairingToggleEl.addEventListener('click', () => this.onPairingToggle());
     this.configOpenEl.addEventListener('click', () => this.openConfig());
     this.configCloseEl.addEventListener('click', () => this.closeConfig());
     this.configBackdropEl.addEventListener('click', () => this.closeConfig());
@@ -72,7 +72,7 @@ export class PageStateController {
     this.restoreLayoutPreference();
     await this.gamepadController.start();
     await this.refreshStatus();
-    setInterval(() => this.refreshStatus(), 2500);
+    window.setInterval(() => this.refreshStatus(), 2500);
   }
 
   openConfig() {
@@ -92,11 +92,11 @@ export class PageStateController {
   }
 
   setTransportStatus(message) {
-    this.statusEl.textContent = message;
+    this.transportStatusEl.textContent = message;
   }
 
   async postJson(url, payload) {
-    const res = await fetch(url, {
+    const res = await fetch(`${this.apiBase}${url}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -111,8 +111,8 @@ export class PageStateController {
 
   renderStatus(status) {
     if (!status) {
-      this.networkStatusEl.textContent = 'Network status unavailable';
-      this.hostStatusEl.textContent = 'Host status unavailable';
+      this.networkStatusEl.textContent = 'Network status unavailable.';
+      this.hostStatusEl.textContent = 'Host status unavailable.';
       return;
     }
 
@@ -122,15 +122,12 @@ export class PageStateController {
 
     this.networkStatusEl.textContent = formatNetworkStatus(net);
     this.hostStatusEl.textContent =
-      `Host ${host.connected ? 'connected' : 'ready'} | BLE advertising ${host.advertising ? 'on' : 'off'} | browser link ${controller.wsConnected ? 'live' : 'idle'}`;
-
-    this.pairingEnabled = !!host.advertising;
-    this.pairingToggleEl.textContent = this.pairingEnabled ? 'Disable Pairing' : 'Enable Pairing';
+      `Host ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${controller.wsConnected ? 'live' : 'idle'}`;
   }
 
   async refreshStatus() {
     try {
-      const res = await fetch('/api/status');
+      const res = await fetch(`${this.apiBase}/api/status`);
       if (!res.ok) {
         throw new Error(`status ${res.status}`);
       }
@@ -151,14 +148,14 @@ export class PageStateController {
     const pass = String(formData.get('pass') || '');
 
     if (!ssid) {
-      this.networkStatusEl.textContent = 'SSID is required';
+      this.networkStatusEl.textContent = 'SSID is required.';
       return;
     }
 
     try {
       await this.postJson('/api/network/sta', { ssid, pass });
-      this.networkStatusEl.textContent = `Trying ${ssid}. The ESP32 will only save it after a successful connection.`;
-      setTimeout(() => this.refreshStatus(), 1500);
+      this.networkStatusEl.textContent = `Trying ${ssid}. The ESP32 will save it only after the connection succeeds.`;
+      window.setTimeout(() => this.refreshStatus(), 1500);
     } catch (err) {
       this.networkStatusEl.textContent = `Failed to start shared Wi-Fi update: ${err.message}`;
     }
@@ -168,14 +165,5 @@ export class PageStateController {
     const nextValue = String(event.target.value || DEFAULT_LAYOUT);
     setCookie(CONTROLLER_LAYOUT_COOKIE, nextValue, CONTROLLER_LAYOUT_COOKIE_MAX_AGE);
     this.layoutStatusEl.textContent = `Layout saved for this browser: ${event.target.selectedOptions[0].textContent}`;
-  }
-
-  async onPairingToggle() {
-    try {
-      await this.postJson('/api/host/pairing', { enabled: !this.pairingEnabled });
-      setTimeout(() => this.refreshStatus(), 250);
-    } catch (err) {
-      this.hostStatusEl.textContent = `Failed to update pairing: ${err.message}`;
-    }
   }
 }

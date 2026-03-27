@@ -26,8 +26,14 @@ Wi-Fi passwords should not be exposed through the UI, APIs, or logs.
 The implementation should reduce the risk of someone reading saved passwords from a lost ESP32 device, and any final implementation should document the security tradeoffs of the chosen storage approach.
 
 ## Design
-The design should use a clean, minimalist design using modern typography and iconography.
-The primary page should stay focused on the gamepad, with configuration presented as a modal instead of a separate page.
+The design should use a clean, minimalist design using modern typography and iconography. It's overall color scheme should be black background, white text, and lilac highlights. You can use other shades of purple if you need more differentiation.
+
+The main page from game.local should not have any text or extra layout on it. It should have a black background and no padding.
+
+The only thing the main page should have is the config button and the virtual gamepad. The config button should be a circle with a gear inside of it. Embed the image into CSS, preferably using an icon or glyph for it.
+
+The gamepad should be a split gamepad, and shown in the virtual-gamepad adapters. The left half should be align to the bottom left of the screen. The right half should align to the bottom right. The gamepad images should shrink to fit the vertical area of the screen, but never grow past the image's native size. It should also maintain its aspect ratio.
+
 
 ## Construction
 In order to make editing easy, it should use separate HTML, js, and css files for layout and code. It should follow good coding principles.

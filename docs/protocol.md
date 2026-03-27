@@ -77,11 +77,3 @@
   "pass": "secret"
 }
 ```
-
-### `POST /api/host/pairing`
-
-```json
-{
-  "enabled": true
-}
-```

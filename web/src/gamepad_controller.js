@@ -1,9 +1,13 @@
-import { setupPresetInteractiveGamepad } from '/vendor/virtual-gamepad-lib/helpers.js';
-import { GamepadEmulator } from '/vendor/virtual-gamepad-lib/GamepadEmulator.js';
+import { setupPresetInteractiveGamepad } from '../../third_party/virtual-gamepad-lib/dist/helpers.js';
+import { GamepadEmulator } from '../../third_party/virtual-gamepad-lib/dist/GamepadEmulator.js';
+import LEFT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-left.svg?raw';
+import RIGHT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-right.svg?raw';
 
 export class GamepadController {
   constructor(opts) {
-    this.rootEl = opts.rootEl;
+    this.stageEl = opts.stageEl;
+    this.leftEl = opts.leftEl;
+    this.rightEl = opts.rightEl;
     this.wsUrl = opts.wsUrl;
     this.onTransportStatus = opts.onTransportStatus;
 
@@ -11,6 +15,7 @@ export class GamepadController {
     this.gpadEmulator = new GamepadEmulator(0.1);
     this.ws = null;
     this.seq = 0;
+    this.retryDelayMs = 1000;
     this.state = {
       t: 0,
       seq: 0,
@@ -20,7 +25,7 @@ export class GamepadController {
   }
 
   async start() {
-    await this.initVirtualGamepad();
+    this.initVirtualGamepad();
     this.connectWs();
     this.tick();
   }
@@ -31,20 +36,35 @@ export class GamepadController {
     }
   }
 
+  initVirtualGamepad() {
+    this.leftEl.innerHTML = LEFT_GPAD_SVG_SOURCE_CODE;
+    this.rightEl.innerHTML = RIGHT_GPAD_SVG_SOURCE_CODE;
+
+    setupPresetInteractiveGamepad(this.stageEl, {
+      AllowDpadDiagonals: true,
+      GpadEmulator: this.gpadEmulator,
+      EmulatedGamepadIndex: this.emulatedGamepadIndex,
+      EmulatedGamepadOverlayMode: true,
+    });
+  }
+
   connectWs() {
+    this.setTransportStatus('Opening browser link...');
     this.ws = new WebSocket(this.wsUrl);
 
     this.ws.onopen = () => {
-      this.setTransportStatus('Connected');
+      this.retryDelayMs = 1000;
+      this.setTransportStatus('Browser link live.');
     };
 
     this.ws.onclose = () => {
-      this.setTransportStatus('Disconnected, retrying...');
-      setTimeout(() => this.connectWs(), 1000);
+      this.setTransportStatus('Browser link lost. Retrying...');
+      window.setTimeout(() => this.connectWs(), this.retryDelayMs);
+      this.retryDelayMs = Math.min(this.retryDelayMs * 2, 5000);
     };
 
     this.ws.onerror = () => {
-      this.setTransportStatus('WebSocket error');
+      this.setTransportStatus('Browser link error.');
     };
   }
 
@@ -53,24 +73,29 @@ export class GamepadController {
   }
 
   readButton(gpad, index) {
-    if (!gpad || !gpad.buttons || !gpad.buttons[index]) {
+    if (!gpad?.buttons?.[index]) {
       return { pressed: false, value: 0 };
     }
 
-    const b = gpad.buttons[index];
-    return { pressed: !!b.pressed, value: typeof b.value === 'number' ? b.value : 0 };
+    const button = gpad.buttons[index];
+    return {
+      pressed: Boolean(button.pressed),
+      value: typeof button.value === 'number' ? button.value : 0,
+    };
   }
 
   readAxis(gpad, index) {
-    if (!gpad || !gpad.axes || typeof gpad.axes[index] !== 'number') {
+    const value = gpad?.axes?.[index];
+    if (typeof value !== 'number') {
       return 0;
     }
-    return this.clamp(gpad.axes[index], -1, 1);
+
+    return this.clamp(value, -1, 1);
   }
 
   syncStateFromGamepad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gpad = pads ? pads[this.emulatedGamepadIndex] : null;
+    const gpad = pads?.[this.emulatedGamepadIndex] ?? null;
 
     const b0 = this.readButton(gpad, 0);
     const b1 = this.readButton(gpad, 1);
@@ -125,26 +150,6 @@ export class GamepadController {
   tick() {
     this.syncStateFromGamepad();
     this.sendCurrentState();
-    requestAnimationFrame(() => this.tick());
-  }
-
-  async initVirtualGamepad() {
-    try {
-      const svgRes = await fetch('/vendor/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-full.svg');
-      if (!svgRes.ok) {
-        throw new Error(`svg ${svgRes.status}`);
-      }
-
-      this.rootEl.innerHTML = await svgRes.text();
-
-      setupPresetInteractiveGamepad(this.rootEl, {
-        AllowDpadDiagonals: true,
-        GpadEmulator: this.gpadEmulator,
-        EmulatedGamepadIndex: this.emulatedGamepadIndex,
-        EmulatedGamepadOverlayMode: true,
-      });
-    } catch (err) {
-      this.rootEl.textContent = `Failed to load virtual gamepad: ${err.message}`;
-    }
+    window.requestAnimationFrame(() => this.tick());
   }
 }

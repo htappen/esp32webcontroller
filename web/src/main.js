@@ -1,6 +1,35 @@
 import './styles.css';
-import { initController } from './controller.js';
-import { createWsClient } from './ws-client.js';
+import { GamepadController } from './gamepad_controller.js';
+import { PageStateController } from './page_state_controller.js';
 
-const ws = createWsClient(`ws://${location.hostname}:81`);
-initController(document.getElementById('app'), ws);
+const runtimeConfig = window.__CONTROLLER_CONFIG || {};
+
+let pageController;
+
+pageController = new PageStateController({
+  apiBase: runtimeConfig.apiBase || '',
+  networkStatusEl: document.getElementById('network-status'),
+  hostStatusEl: document.getElementById('host-status'),
+  transportStatusEl: document.getElementById('transport-status'),
+  layoutStatusEl: document.getElementById('layout-status'),
+  staForm: document.getElementById('sta-form'),
+  layoutSelectEl: document.getElementById('layout-select'),
+  configOpenEl: document.getElementById('config-open'),
+  configCloseEl: document.getElementById('config-close'),
+  configBackdropEl: document.getElementById('config-backdrop'),
+  configModalEl: document.getElementById('config-modal'),
+  gamepadController: new GamepadController({
+    stageEl: document.getElementById('controller-stage'),
+    leftEl: document.getElementById('gpad-display-left'),
+    rightEl: document.getElementById('gpad-display-right'),
+    wsUrl: runtimeConfig.wsUrl || `ws://${location.hostname}:81`,
+    onTransportStatus: (message) => pageController.setTransportStatus(message),
+  }),
+});
+
+window.__controllerApp = {
+  pageController,
+  gamepadController: pageController.gamepadController,
+};
+
+pageController.start();

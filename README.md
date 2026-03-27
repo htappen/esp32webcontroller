@@ -84,9 +84,6 @@ If the device has already been configured for a local Wi-Fi network, your phone 
 - `POST /api/network/sta`:
   - Body: `{ "ssid": "...", "pass": "..." }`
   - Stores STA credentials and starts shared Wi-Fi connection attempt.
-- `POST /api/host/pairing`:
-  - Body: `{ "enabled": true|false }`
-  - Enables/disables BLE pairing/discoverable mode.
 
 ## Submodules
 
