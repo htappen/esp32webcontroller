@@ -14,6 +14,7 @@ class BleGamepadBridge {
   bool begin();
   void loop();
   bool connected();
+  bool forgetCurrentBond();
   void setAdvertisingEnabled(bool enabled);
   bool advertisingEnabled() const;
   void send(const BleReport& report);

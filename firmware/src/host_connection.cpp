@@ -16,6 +16,13 @@ void HostConnectionManager::loop() {
   status_.advertising = ble_.advertisingEnabled();
 }
 
+bool HostConnectionManager::forgetCurrentHost() {
+  const bool forgotten = ble_.forgetCurrentBond();
+  status_.connected = ble_.connected();
+  status_.advertising = ble_.advertisingEnabled();
+  return forgotten;
+}
+
 void HostConnectionManager::setPairingEnabled(bool enabled) {
   pairing_enabled_ = enabled;
   ble_.setAdvertisingEnabled(enabled);

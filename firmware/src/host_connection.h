@@ -14,6 +14,7 @@ class HostConnectionManager {
   bool begin();
   void loop();
 
+  bool forgetCurrentHost();
   void setPairingEnabled(bool enabled);
   HostStatus status() const;
 

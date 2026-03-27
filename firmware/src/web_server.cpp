@@ -126,6 +126,14 @@ bool WebServerBridge::begin() {
     g_http.send(202, "application/json", "{\"ok\":true,\"status\":\"connecting\"}");
   });
 
+  g_http.on("/api/host/forget", HTTP_POST, [this]() {
+    if (!host_->forgetCurrentHost()) {
+      g_http.send(409, "application/json", "{\"error\":\"no_connected_host\"}");
+      return;
+    }
+    g_http.send(200, "application/json", "{\"ok\":true,\"status\":\"host_forgotten\"}");
+  });
+
   g_http.on("/", HTTP_GET, []() {
     File f = LittleFS.open("/index.html", "r");
     if (!f) {

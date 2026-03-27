@@ -64,6 +64,27 @@ bool BleGamepadBridge::connected() {
   return started_ && ble_.isConnected();
 }
 
+bool BleGamepadBridge::forgetCurrentBond() {
+  if (!started_ || !ble_.isConnected()) {
+    return false;
+  }
+
+  NimBLEServer* server = NimBLEDevice::getServer();
+  if (server == nullptr) {
+    return false;
+  }
+
+  NimBLEConnInfo peer = server->getPeerInfo(0);
+  const uint16_t conn_handle = peer.getConnHandle();
+  if (!ble_.deleteBond()) {
+    return false;
+  }
+
+  server->disconnect(conn_handle);
+  next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
+  return true;
+}
+
 void BleGamepadBridge::setAdvertisingEnabled(bool enabled) {
   advertising_enabled_ = enabled;
   next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;

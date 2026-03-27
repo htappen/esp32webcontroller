@@ -96,6 +96,7 @@ select {
 
 .config-trigger,
 .primary-button,
+.secondary-button,
 .modal-close {
   appearance: none;
   border: 0;
@@ -132,16 +133,22 @@ select {
 }
 
 .config-trigger:hover,
-.config-trigger:focus-visible,
+.config-trigger:focus-visible {
+  transform: translateX(-50%) translateY(-1px);
+}
+
 .primary-button:hover,
 .primary-button:focus-visible,
+.secondary-button:hover,
+.secondary-button:focus-visible,
 .modal-close:hover,
 .modal-close:focus-visible {
-  transform: translateX(-50%) translateY(-1px);
+  transform: translateY(-1px);
 }
 
 .config-trigger:focus-visible,
 .primary-button:focus-visible,
+.secondary-button:focus-visible,
 .modal-close:focus-visible,
 input:focus-visible,
 select:focus-visible {
@@ -276,6 +283,22 @@ input::placeholder {
   font-weight: 800;
   letter-spacing: 0.01em;
   box-shadow: 0 12px 30px rgba(121, 84, 188, 0.28);
+}
+
+.secondary-button {
+  min-height: 3rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .modal-close {

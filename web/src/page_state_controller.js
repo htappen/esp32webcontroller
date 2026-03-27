@@ -48,7 +48,9 @@ export class PageStateController {
     this.hostStatusEl = opts.hostStatusEl;
     this.transportStatusEl = opts.transportStatusEl;
     this.layoutStatusEl = opts.layoutStatusEl;
+    this.hostActionStatusEl = opts.hostActionStatusEl;
     this.staForm = opts.staForm;
+    this.forgetHostEl = opts.forgetHostEl;
     this.layoutSelectEl = opts.layoutSelectEl;
     this.configOpenEl = opts.configOpenEl;
     this.configCloseEl = opts.configCloseEl;
@@ -59,6 +61,7 @@ export class PageStateController {
 
   async start() {
     this.staForm.addEventListener('submit', (event) => this.onStaSubmit(event));
+    this.forgetHostEl.addEventListener('click', () => this.onForgetHost());
     this.layoutSelectEl.addEventListener('change', (event) => this.onLayoutChange(event));
     this.configOpenEl.addEventListener('click', () => this.openConfig());
     this.configCloseEl.addEventListener('click', () => this.closeConfig());
@@ -158,6 +161,26 @@ export class PageStateController {
       window.setTimeout(() => this.refreshStatus(), 1500);
     } catch (err) {
       this.networkStatusEl.textContent = `Failed to start shared Wi-Fi update: ${err.message}`;
+    }
+  }
+
+  async onForgetHost() {
+    this.forgetHostEl.disabled = true;
+    this.hostActionStatusEl.textContent = 'Forgetting current Bluetooth host...';
+
+    try {
+      await this.postJson('/api/host/forget', {});
+      this.hostActionStatusEl.textContent =
+        'Current Bluetooth host forgotten. The ESP32 should resume advertising for a new host.';
+      window.setTimeout(() => this.refreshStatus(), 500);
+    } catch (err) {
+      if (err.message === 'Request failed: 409') {
+        this.hostActionStatusEl.textContent = 'No Bluetooth host is connected right now.';
+      } else {
+        this.hostActionStatusEl.textContent = `Failed to forget Bluetooth host: ${err.message}`;
+      }
+    } finally {
+      this.forgetHostEl.disabled = false;
     }
   }
 
