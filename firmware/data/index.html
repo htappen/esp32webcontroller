@@ -8,31 +8,69 @@
     <link rel="stylesheet" href="/vendor/virtual-gamepad-lib/gamepad_assets/base.css" />
   </head>
   <body>
-    <main>
-      <h1>ESP32 Controller</h1>
-      <p id="status">Connecting...</p>
-      <section class="panel">
-        <h2>Network</h2>
-        <p id="network-status">Loading...</p>
-        <form id="sta-form">
-          <label>
-            SSID
-            <input id="sta-ssid" name="ssid" type="text" maxlength="32" />
-          </label>
-          <label>
-            Password
-            <input id="sta-pass" name="pass" type="password" maxlength="64" />
-          </label>
-          <button type="submit">Connect Shared Wi-Fi</button>
-        </form>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">ESP32 Web Gamepad</p>
+          <h1>Controller</h1>
+        </div>
+        <button id="config-open" class="ghost-button" type="button">Config</button>
+      </header>
+
+      <section class="status-strip" aria-live="polite">
+        <p id="status" class="status-pill">Connecting...</p>
       </section>
-      <section class="panel">
-        <h2>Host</h2>
-        <p id="host-status">Loading...</p>
-        <button id="pairing-toggle" type="button">Enable Pairing</button>
+
+      <section class="controller-card">
+        <div id="controller-root"></div>
       </section>
-      <div id="controller-root"></div>
     </main>
+
+    <div id="config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="config-title">
+      <div id="config-backdrop" class="modal-backdrop"></div>
+      <section class="modal-panel">
+        <button id="config-close" class="icon-button" type="button" aria-label="Close config">X</button>
+        <h2 id="config-title">Configuration</h2>
+
+        <section class="config-section">
+          <div class="section-heading">
+            <p class="section-label">Device Config</p>
+            <p class="section-copy">Shared Wi-Fi settings stored on the ESP32 after a verified connection.</p>
+          </div>
+          <p id="network-status" class="section-status">Loading...</p>
+          <form id="sta-form" class="stacked-form">
+            <label>
+              SSID
+              <input id="sta-ssid" name="ssid" type="text" maxlength="32" autocomplete="off" />
+            </label>
+            <label>
+              Password
+              <input id="sta-pass" name="pass" type="password" maxlength="64" autocomplete="current-password" />
+            </label>
+            <button class="primary-button" type="submit">Connect Shared Wi-Fi</button>
+          </form>
+        </section>
+
+        <hr class="section-divider" />
+
+        <section class="config-section">
+          <div class="section-heading">
+            <p class="section-label">Controller Config</p>
+            <p class="section-copy">This layout preference is stored in a cookie on this device only.</p>
+          </div>
+          <p id="host-status" class="section-status">Loading...</p>
+          <label>
+            Controller Layout
+            <select id="layout-select" name="layout">
+              <option value="virtual-gamepad-default">Virtual Gamepad Default</option>
+            </select>
+          </label>
+          <p id="layout-status" class="section-footnote">Layout ready.</p>
+          <button id="pairing-toggle" class="ghost-button wide-button" type="button">Enable Pairing</button>
+        </section>
+      </section>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

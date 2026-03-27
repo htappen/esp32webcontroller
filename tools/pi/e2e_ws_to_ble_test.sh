@@ -9,6 +9,9 @@ RAW_HTTP_BASE_URL="${RAW_HTTP_BASE_URL:-http://192.168.4.1}"
 MDNS_HTTP_BASE_URL="${MDNS_HTTP_BASE_URL:-http://game.local}"
 HTTP_BASE_URL="${HTTP_BASE_URL:-http://192.168.4.1}"
 WS_URL="${WS_URL:-ws://192.168.4.1:81}"
+EXPECTED_AP_IP="${EXPECTED_AP_IP:-192.168.4.1}"
+EXPECTED_AP_ACTIVE="${EXPECTED_AP_ACTIVE:-1}"
+EXPECTED_STA_CONNECTED="${EXPECTED_STA_CONNECTED:-0}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
@@ -40,7 +43,7 @@ assert_http_endpoints_equivalent() {
   fetch_status "${RAW_HTTP_BASE_URL}" "${raw_status_file}"
   fetch_status "${MDNS_HTTP_BASE_URL}" "${mdns_status_file}"
 
-  "${VENV_PYTHON}" - "${raw_status_file}" "${mdns_status_file}" <<'PY'
+  "${VENV_PYTHON}" - "${raw_status_file}" "${mdns_status_file}" "${EXPECTED_AP_IP}" "${EXPECTED_AP_ACTIVE}" "${EXPECTED_STA_CONNECTED}" <<'PY'
 import json
 import sys
 
@@ -70,8 +73,18 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 with open(sys.argv[2], "r", encoding="utf-8") as handle:
     mdns_status = json.load(handle)
 
-if raw_status["network"]["apIp"] != "192.168.4.1":
-    raise SystemExit("unexpected AP IP from raw endpoint")
+expected_ap_ip = sys.argv[3]
+expected_ap_active = sys.argv[4] == "1"
+expected_sta_connected = sys.argv[5] == "1"
+
+if raw_status["network"]["apIp"] != expected_ap_ip:
+    raise SystemExit(f"unexpected AP IP from raw endpoint: {raw_status['network']['apIp']!r}")
+
+if bool(raw_status["network"]["apActive"]) != expected_ap_active:
+    raise SystemExit("unexpected AP active state from raw endpoint")
+
+if bool(raw_status["network"]["staConnected"]) != expected_sta_connected:
+    raise SystemExit("unexpected STA connected state from raw endpoint")
 
 if mdns_status["network"]["apIp"] != raw_status["network"]["apIp"]:
     raise SystemExit("game.local resolved to a different AP IP")
@@ -109,15 +122,23 @@ capture_case() {
 
 log "waiting for ESP32 HTTP status endpoint"
 fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/status.json"
-"${VENV_PYTHON}" - "${TMP_DIR}/status.json" <<'PY'
+"${VENV_PYTHON}" - "${TMP_DIR}/status.json" "${EXPECTED_AP_IP}" "${EXPECTED_AP_ACTIVE}" "${EXPECTED_STA_CONNECTED}" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     status = json.load(handle)
 
-if status["network"]["apIp"] != "192.168.4.1":
-    raise SystemExit("unexpected AP IP")
+expected_ap_ip = sys.argv[2]
+expected_ap_active = sys.argv[3] == "1"
+expected_sta_connected = sys.argv[4] == "1"
+
+if status["network"]["apIp"] != expected_ap_ip:
+    raise SystemExit(f"unexpected AP IP: {status['network']['apIp']!r}")
+if bool(status["network"]["apActive"]) != expected_ap_active:
+    raise SystemExit("unexpected AP active state")
+if bool(status["network"]["staConnected"]) != expected_sta_connected:
+    raise SystemExit("unexpected STA connected state")
 print(json.dumps(status, separators=(",", ":")))
 PY
 

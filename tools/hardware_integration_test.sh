@@ -7,6 +7,7 @@ source "${ROOT_DIR}/tools/lib/esp32_common.sh"
 
 PORT="${1:-}"
 ENV_NAME="${PIO_ENV:-${DEFAULT_ENV}}"
+ERASE_FLASH_FIRST="${ERASE_FLASH_FIRST:-0}"
 LOG_FILE="$(mktemp)"
 cleanup() {
   rm -f "${LOG_FILE}"
@@ -28,6 +29,11 @@ if [[ -z "${PORT}" ]]; then
 fi
 
 activate_platformio_env
+
+if [[ "${ERASE_FLASH_FIRST}" == "1" ]]; then
+  log "erasing flash on ${PORT} before upload"
+  "${ROOT_DIR}/tools/erase_flash.sh" "${PORT}"
+fi
 
 log "building firmware for ${ENV_NAME}"
 (

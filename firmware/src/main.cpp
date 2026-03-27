@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "config.h"
+#include "device_settings.h"
 #include "host_connection.h"
 #include "input_mapper.h"
 #include "network_manager.h"
@@ -9,7 +10,8 @@
 
 namespace {
 StateStore g_state;
-NetworkManager g_network;
+DeviceSettingsStore g_settings;
+NetworkManager g_network(&g_settings);
 HostConnectionManager g_host;
 WebServerBridge g_web(&g_network, &g_host, &g_state);
 uint32_t g_last_report_ms = 0;

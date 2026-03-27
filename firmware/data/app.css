@@ -1,50 +1,272 @@
 :root {
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg-top: #f2ece1;
+  --bg-bottom: #d9e2ec;
+  --surface: rgba(255, 251, 245, 0.82);
+  --surface-strong: #fffdf8;
+  --surface-border: rgba(57, 44, 28, 0.12);
+  --text-strong: #1f2933;
+  --text-muted: #52606d;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --shadow: 0 24px 80px rgba(23, 43, 77, 0.14);
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  padding: 16px;
-  background: #f3f4f6;
-  color: #111827;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.65), transparent 42%),
+    linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  color: var(--text-strong);
 }
 
-main {
-  max-width: 840px;
+body.modal-open {
+  overflow: hidden;
+}
+
+.app-shell {
+  width: min(980px, calc(100vw - 24px));
   margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.hero,
+.controller-card,
+.modal-panel {
+  backdrop-filter: blur(18px);
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 4px 20px;
+}
+
+.eyebrow,
+.section-label {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+  letter-spacing: -0.04em;
+}
+
+h1 {
+  font-size: clamp(2.4rem, 6vw, 4.3rem);
+  line-height: 0.92;
+}
+
+h2 {
+  margin-bottom: 20px;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+}
+
+.status-strip {
+  margin-bottom: 16px;
+}
+
+.status-pill {
+  display: inline-flex;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.76);
+  border: 1px solid rgba(57, 44, 28, 0.1);
+  color: var(--text-muted);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
+}
+
+.controller-card {
+  padding: 16px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 #controller-root {
-  min-height: 320px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #ffffff;
-  padding: 8px;
+  min-height: 360px;
+  border-radius: calc(var(--radius-xl) - 8px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(244, 241, 235, 0.8)),
+    linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(194, 65, 12, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  overflow: hidden;
 }
 
-.panel {
-  margin: 12px 0;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #ffffff;
-  padding: 12px;
+.ghost-button,
+.primary-button,
+.icon-button {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease, opacity 160ms ease;
+}
+
+.ghost-button,
+.primary-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.ghost-button {
+  color: var(--text-strong);
+  background: rgba(255, 253, 248, 0.84);
+  border: 1px solid rgba(57, 44, 28, 0.12);
+}
+
+.primary-button {
+  color: #f8fffd;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+
+.icon-button {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.wide-button {
+  width: 100%;
+}
+
+.ghost-button:hover,
+.primary-button:hover,
+.icon-button:hover {
+  transform: translateY(-1px);
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.modal-panel {
+  position: relative;
+  width: min(640px, calc(100vw - 24px));
+  max-height: min(92vh, 760px);
+  margin: 24px auto;
+  overflow: auto;
+  padding: 28px 24px 24px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 249, 242, 0.96);
+  border: 1px solid rgba(57, 44, 28, 0.12);
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.28);
+}
+
+.config-section {
+  display: grid;
+  gap: 14px;
+}
+
+.section-heading,
+.stacked-form {
+  display: grid;
+  gap: 10px;
+}
+
+.section-copy,
+.section-status,
+.section-footnote {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.section-divider {
+  margin: 22px 0;
+  border: none;
+  border-top: 1px solid rgba(57, 44, 28, 0.12);
 }
 
 label {
-  display: block;
-  margin: 8px 0;
+  display: grid;
+  gap: 6px;
+  color: var(--text-strong);
+  font-weight: 600;
 }
 
-input {
+input,
+select {
   width: 100%;
-  max-width: 360px;
-  display: block;
-  margin-top: 4px;
-  padding: 8px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(82, 96, 109, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text-strong);
+  font: inherit;
 }
 
-button {
-  margin-top: 8px;
-  padding: 8px 12px;
+input:focus,
+select:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.22);
+  outline-offset: 1px;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100vw, calc(100vw - 16px));
+    padding-top: 16px;
+  }
+
+  .hero {
+    padding-bottom: 14px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 11vw, 3.2rem);
+  }
+
+  .controller-card {
+    padding: 12px;
+  }
+
+  #controller-root {
+    min-height: 300px;
+  }
+
+  .modal-panel {
+    margin: 12px auto;
+    padding: 24px 18px 18px;
+  }
 }

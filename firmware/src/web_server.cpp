@@ -24,6 +24,22 @@ const char* mode_to_string(NetworkMode mode) {
   return "unknown";
 }
 
+const char* connection_state_to_string(NetworkConnectionState state) {
+  switch (state) {
+    case NetworkConnectionState::kNoSavedConfig:
+      return "no_saved_config";
+    case NetworkConnectionState::kApFallback:
+      return "ap_fallback";
+    case NetworkConnectionState::kStaConnecting:
+      return "sta_connecting";
+    case NetworkConnectionState::kStaConnected:
+      return "sta_connected";
+    case NetworkConnectionState::kStaCandidateFailed:
+      return "sta_candidate_failed";
+  }
+  return "unknown";
+}
+
 const char* mime_type_for_path(const String& path) {
   if (path.endsWith(".js")) return "application/javascript";
   if (path.endsWith(".css")) return "text/css";
@@ -43,13 +59,7 @@ bool WebServerBridge::begin() {
     return false;
   }
   LittleFS.begin(true);
-  if (MDNS.begin(config::kApHostname)) {
-    MDNS.setInstanceName(config::kMdnsInstanceName);
-    MDNS.addService("http", "tcp", config::kHttpPort);
-    MDNS.addService("ws", "tcp", config::kWsPort);
-  } else {
-    Serial.println("mDNS start failed");
-  }
+  syncMdns(network_->status());
 
   g_http.on("/api/status", HTTP_GET, [this]() {
     JsonDocument doc;
@@ -58,10 +68,19 @@ bool WebServerBridge::begin() {
     const ControllerState controller = state_->snapshot();
 
     doc["network"]["mode"] = mode_to_string(ns.mode);
+    doc["network"]["connectionState"] = connection_state_to_string(ns.connection_state);
     doc["network"]["apActive"] = ns.ap_active;
+    doc["network"]["apFallbackActive"] = ns.ap_fallback_active;
     doc["network"]["staConnected"] = ns.sta_connected;
+    doc["network"]["staConnecting"] = ns.sta_connecting;
+    doc["network"]["hasSavedStaConfig"] = ns.has_saved_sta_config;
+    doc["network"]["candidateUpdateInProgress"] = ns.candidate_update_in_progress;
+    doc["network"]["lastCandidateFailed"] = ns.last_candidate_failed;
     doc["network"]["apIp"] = ns.ap_ip.toString();
     doc["network"]["staIp"] = ns.sta_ip.toString();
+    doc["network"]["activeStaSsid"] = ns.active_sta_ssid;
+    doc["network"]["savedStaSsid"] = ns.saved_sta_ssid;
+    doc["network"]["candidateStaSsid"] = ns.candidate_sta_ssid;
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
     doc["controller"]["wsConnected"] = ws_client_connected_;
@@ -104,7 +123,7 @@ bool WebServerBridge::begin() {
       g_http.send(500, "application/json", "{\"error\":\"sta_connect_failed\"}");
       return;
     }
-    g_http.send(200, "application/json", "{\"ok\":true}");
+    g_http.send(202, "application/json", "{\"ok\":true,\"status\":\"connecting\"}");
   });
 
   g_http.on("/api/host/pairing", HTTP_POST, [this]() {
@@ -171,9 +190,9 @@ bool WebServerBridge::begin() {
 void WebServerBridge::loop() {
   g_http.handleClient();
   g_ws.loop();
-  // Keep manager state fresh even before server implementation lands.
   network_->loop();
   host_->loop();
+  syncMdns(network_->status());
 
   if (ws_client_connected_ && ws_last_packet_ms_ > 0) {
     const uint32_t now = millis();
@@ -231,4 +250,38 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
       break;
   }
   (void)num;
+}
+
+void WebServerBridge::syncMdns(const NetworkStatus& status) {
+  const IPAddress current_ip = status.sta_connected ? status.sta_ip : status.ap_ip;
+  const bool reachable = status.sta_connected || status.ap_active;
+
+  if (!reachable) {
+    if (mdns_started_) {
+      MDNS.end();
+      mdns_started_ = false;
+      mdns_ip_ = IPAddress();
+    }
+    return;
+  }
+
+  if (mdns_started_ && mdns_mode_ == status.mode && mdns_ip_ == current_ip) {
+    return;
+  }
+
+  if (mdns_started_) {
+    MDNS.end();
+    mdns_started_ = false;
+  }
+
+  if (MDNS.begin(config::kApHostname)) {
+    MDNS.setInstanceName(config::kMdnsInstanceName);
+    MDNS.addService("http", "tcp", config::kHttpPort);
+    MDNS.addService("ws", "tcp", config::kWsPort);
+    mdns_started_ = true;
+    mdns_mode_ = status.mode;
+    mdns_ip_ = current_ip;
+  } else {
+    Serial.println("mDNS start failed");
+  }
 }

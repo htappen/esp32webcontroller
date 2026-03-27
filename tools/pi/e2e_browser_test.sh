@@ -52,7 +52,7 @@ EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --devic
 log "using input event device ${EVENT_DEVICE}"
 
 log "verifying the UI click reaches the BLE input device"
-"${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --duration "${BROWSER_BLE_CAPTURE_SECONDS}" --output "${TMP_DIR}/browser_ble.jsonl" &
+"${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "${BLE_NAME}" --wait-timeout 10 --duration "${BROWSER_BLE_CAPTURE_SECONDS}" --output "${TMP_DIR}/browser_ble.jsonl" &
 capture_pid=$!
 sleep 0.2
 "${VENV_PYTHON}" "${SCRIPT_DIR}/browser_ui_test.py" \

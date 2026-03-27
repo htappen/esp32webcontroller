@@ -16,6 +16,7 @@ class WebServerBridge {
 
  private:
   void handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
+  void syncMdns(const NetworkStatus& status);
 
   NetworkManager* network_ = nullptr;
   HostConnectionManager* host_ = nullptr;
@@ -26,4 +27,7 @@ class WebServerBridge {
   uint32_t ws_packets_received_ = 0;
   uint32_t ws_packets_applied_ = 0;
   uint32_t ws_packets_rejected_ = 0;
+  bool mdns_started_ = false;
+  NetworkMode mdns_mode_ = NetworkMode::kAp;
+  IPAddress mdns_ip_;
 };
