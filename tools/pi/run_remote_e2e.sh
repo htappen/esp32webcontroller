@@ -29,7 +29,7 @@ log "running remote Pi end-to-end test"
 ssh "${PI_HOST}" "chmod +x '${REMOTE_BASE_DIR}/tools/pi/'*.sh '${REMOTE_BASE_DIR}/tools/pi/'*.py && '${REMOTE_BASE_DIR}/tools/pi/e2e_ws_to_ble_test.sh'"
 
 if [[ "${RUN_BROWSER_TEST}" == "1" ]]; then
-  log "running remote Pi browser UI end-to-end test"
+  log "running remote Pi browser page smoke test"
   ssh "${PI_HOST}" "chmod +x '${REMOTE_BASE_DIR}/tools/pi/'*.sh '${REMOTE_BASE_DIR}/tools/pi/'*.py && '${REMOTE_BASE_DIR}/tools/pi/e2e_browser_test.sh'"
 fi
 

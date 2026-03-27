@@ -94,3 +94,35 @@ bool DeviceSettingsStore::clearStaSettings() {
   prefs.end();
   return true;
 }
+
+DeviceRuntimeSettings DeviceSettingsStore::loadRuntimeSettings() const {
+  DeviceRuntimeSettings settings;
+  if (!ready_) {
+    return settings;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, true)) {
+    return settings;
+  }
+
+  settings.pairing_enabled = prefs.getBool(kPairingEnabledKey, true);
+  prefs.end();
+  return settings;
+}
+
+bool DeviceSettingsStore::saveRuntimeSettings(const DeviceRuntimeSettings& settings) {
+  if (!ready_) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, false)) {
+    return false;
+  }
+
+  prefs.putUInt(kSchemaVersionKey, kSchemaVersion);
+  const bool ok = prefs.putBool(kPairingEnabledKey, settings.pairing_enabled);
+  prefs.end();
+  return ok;
+}

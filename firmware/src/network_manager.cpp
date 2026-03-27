@@ -33,6 +33,12 @@ void NetworkManager::loop() {
     return;
   }
 
+  if (status_.sta_connected && wifi_status != WL_CONNECTED) {
+    handleStaDisconnected();
+    refreshRuntimeStatus();
+    return;
+  }
+
   if (status_.sta_connecting && sta_connect_started_ms_ > 0 &&
       (now - sta_connect_started_ms_) > config::kStaConnectTimeoutMs) {
     handleStaAttemptTimeout();
@@ -185,6 +191,22 @@ void NetworkManager::handleStaConnected() {
   active_attempt_is_candidate_ = false;
 }
 
+void NetworkManager::handleStaDisconnected() {
+  status_.sta_connected = false;
+  status_.sta_connecting = false;
+  status_.sta_ip = IPAddress();
+  sta_connect_started_ms_ = 0;
+
+  if (!committed_sta_.present) {
+    enterApFallback(false);
+    status_.connection_state = NetworkConnectionState::kNoSavedConfig;
+    return;
+  }
+
+  enterApFallback(false);
+  scheduleRetry();
+}
+
 void NetworkManager::handleStaAttemptTimeout() {
   sta_connect_started_ms_ = 0;
   status_.sta_connecting = false;
@@ -229,11 +251,19 @@ void NetworkManager::scheduleRetry() {
   next_sta_retry_ms_ = millis() + config::kStaReconnectBackoffMs;
   status_.sta_connecting = false;
   status_.sta_connected = false;
-  status_.connection_state = NetworkConnectionState::kStaConnecting;
+  if (!status_.ap_fallback_active) {
+    status_.connection_state = NetworkConnectionState::kStaConnecting;
+  }
 }
 
 void NetworkManager::refreshRuntimeStatus() {
   const wl_status_t wifi_status = WiFi.status();
+  const wifi_mode_t wifi_mode = WiFi.getMode();
+  status_.ap_active = wifi_mode == WIFI_AP || wifi_mode == WIFI_AP_STA;
+  if (status_.ap_active) {
+    status_.ap_ip = WiFi.softAPIP();
+  }
+
   if (!status_.sta_connecting) {
     status_.sta_connected = wifi_status == WL_CONNECTED;
   }
@@ -243,7 +273,7 @@ void NetworkManager::refreshRuntimeStatus() {
     if (strlen(status_.active_sta_ssid) == 0) {
       copySafe(status_.active_sta_ssid, sizeof(status_.active_sta_ssid), WiFi.SSID().c_str());
     }
-    status_.mode = NetworkMode::kSta;
+    status_.mode = status_.ap_active ? NetworkMode::kApSta : NetworkMode::kSta;
     status_.connection_state = NetworkConnectionState::kStaConnected;
     status_.ap_fallback_active = false;
   } else if (!status_.sta_connecting) {

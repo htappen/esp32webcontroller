@@ -60,12 +60,21 @@
   },
   "host": {
     "advertising": true,
-    "connected": false
+    "connected": false,
+    "pairingEnabled": true
   },
   "controller": {
     "wsConnected": true,
     "lastPacketAgeMs": 8
   }
+}
+```
+
+### `POST /api/host/pairing`
+
+```json
+{
+  "enabled": true
 }
 ```
 

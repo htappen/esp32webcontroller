@@ -46,11 +46,23 @@
    - Verified the direct WebSocket E2E path passes on hardware from `controller-pi`: neutral packet, button press, axis movement, and timeout-to-neutral assertions all pass.
    - Add browser-driven Playwright coverage only after the direct WebSocket E2E path is stable.
 
-9. [NEXT] Harden board-specific reliability.
+9. [DONE] Harden board-specific reliability.
    - Add reconnect/backoff behavior for Wi-Fi and BLE on classic ESP32.
    - Maintain neutral output on disconnect or stalled controller input.
    - Persist settings in NVS/Preferences once the hardware path is stable.
+   - Verified on hardware that `/dev/ttyACM0` still passes the local startup integration flow after the reliability changes.
+   - Verified from `controller-pi` that the direct WebSocket-to-BLE route still passes: neutral packet, button press, axis movement, and timeout-to-neutral.
+   - Replaced the Pi-side Playwright path with a lighter Chromium page smoke check because the prior script was injecting JS and synthetic events rather than validating real UI behavior.
 
-10. Expand automated regression coverage beyond startup smoke tests.
+10. [NEXT] Expand automated regression coverage beyond startup smoke tests.
    - Extend `test/host` coverage for mapper/protocol edge cases.
    - Add scripted checks for status endpoints and controller timeout behavior where feasible.
+
+11. Create new SVGs of different controller layouts.
+   - Nintendo 64
+   - Playstation
+   - Xbox
+   - Switch
+   - Super Nintendo
+   - Nintendo
+   - Sega Genesis

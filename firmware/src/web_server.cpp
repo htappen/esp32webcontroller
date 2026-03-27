@@ -83,6 +83,7 @@ bool WebServerBridge::begin() {
     doc["network"]["candidateStaSsid"] = ns.candidate_sta_ssid;
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
+    doc["host"]["pairingEnabled"] = hs.pairing_enabled;
     doc["controller"]["wsConnected"] = ws_client_connected_;
     doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
     doc["controller"]["seq"] = controller.seq;
@@ -132,6 +133,24 @@ bool WebServerBridge::begin() {
       return;
     }
     g_http.send(200, "application/json", "{\"ok\":true,\"status\":\"host_forgotten\"}");
+  });
+
+  g_http.on("/api/host/pairing", HTTP_POST, [this]() {
+    JsonDocument req;
+    if (deserializeJson(req, g_http.arg("plain")) != DeserializationError::Ok ||
+        !req["enabled"].is<bool>()) {
+      g_http.send(400, "application/json", "{\"error\":\"invalid_json\"}");
+      return;
+    }
+
+    const bool enabled = req["enabled"].as<bool>();
+    if (!host_->setPairingEnabled(enabled)) {
+      g_http.send(500, "application/json", "{\"error\":\"settings_persist_failed\"}");
+      return;
+    }
+
+    g_http.send(200, "application/json", enabled ? "{\"ok\":true,\"pairingEnabled\":true}"
+                                                 : "{\"ok\":true,\"pairingEnabled\":false}");
   });
 
   g_http.on("/", HTTP_GET, []() {
@@ -194,7 +213,7 @@ void WebServerBridge::loop() {
     const uint32_t now = millis();
     if (now - ws_last_packet_ms_ > config::kWsTimeoutMs) {
       ws_client_connected_ = false;
-      state_->reset();
+      resetControllerState();
     }
   }
 }
@@ -208,7 +227,7 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
     case WStype_DISCONNECTED:
       ws_client_connected_ = false;
       ws_last_packet_ms_ = 0;
-      state_->reset();
+      resetControllerState();
       break;
     case WStype_TEXT: {
       if (payload == nullptr || length == 0) {
@@ -246,6 +265,22 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
       break;
   }
   (void)num;
+}
+
+void WebServerBridge::resetControllerState() {
+  if (!state_->reset()) {
+    return;
+  }
+  sendNeutralReport();
+}
+
+void WebServerBridge::sendNeutralReport() {
+  BleGamepadBridge* bridge = host_->bridge();
+  if (bridge == nullptr || !bridge->connected()) {
+    return;
+  }
+  const BleReport report = InputMapper::map(state_->snapshot());
+  bridge->send(report);
 }
 
 void WebServerBridge::syncMdns(const NetworkStatus& status) {

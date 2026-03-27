@@ -40,7 +40,7 @@ struct ControllerState {
 
 class StateStore {
  public:
-  void reset();
+  bool reset();
   bool apply(const ControllerState& next);
   ControllerState snapshot() const;
 

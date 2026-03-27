@@ -12,9 +12,10 @@ namespace {
 StateStore g_state;
 DeviceSettingsStore g_settings;
 NetworkManager g_network(&g_settings);
-HostConnectionManager g_host;
+HostConnectionManager g_host(&g_settings);
 WebServerBridge g_web(&g_network, &g_host, &g_state);
 uint32_t g_last_report_ms = 0;
+bool g_last_host_connected = false;
 }
 
 void setup() {
@@ -30,6 +31,12 @@ void setup() {
 void loop() {
   g_host.loop();
   g_web.loop();
+
+  const HostStatus host_status = g_host.status();
+  if (g_last_host_connected && !host_status.connected) {
+    g_state.reset();
+  }
+  g_last_host_connected = host_status.connected;
 
   const uint32_t now = millis();
   if (now - g_last_report_ms >= config::kReportIntervalMs) {

@@ -60,6 +60,7 @@ class NetworkManager {
   bool startStaAttempt(const StaCredentials& creds, bool is_candidate);
   void beginStaAttempt();
   void handleStaConnected();
+  void handleStaDisconnected();
   void handleStaAttemptTimeout();
   void enterApFallback(bool candidate_failed);
   void scheduleRetry();

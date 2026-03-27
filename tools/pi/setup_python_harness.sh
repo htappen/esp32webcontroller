@@ -19,9 +19,12 @@ require_cmd() {
 
 require_cmd python3
 
-log "recreating Pi Python harness venv at ${VENV_DIR}"
-rm -rf "${VENV_DIR}"
-python3 -m venv --system-site-packages "${VENV_DIR}"
+if [[ ! -d "${VENV_DIR}" ]]; then
+  log "creating Pi Python harness venv at ${VENV_DIR}"
+  python3 -m venv --system-site-packages "${VENV_DIR}"
+else
+  log "reusing Pi Python harness venv at ${VENV_DIR}"
+fi
 
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
@@ -29,11 +32,14 @@ source "${VENV_DIR}/bin/activate"
 log "upgrading pip in Pi Python harness venv"
 python -m pip install --upgrade pip
 
-log "installing Pi Python harness requirements from ${REQ_FILE}"
-python -m pip install -r "${REQ_FILE}"
+if [[ -s "${REQ_FILE}" ]]; then
+  log "installing Pi Python harness requirements from ${REQ_FILE}"
+  python -m pip install -r "${REQ_FILE}"
+else
+  log "no extra Pi Python harness requirements declared"
+fi
 
 log "verifying Pi Python harness imports"
 python -c "import dbus, gi"
-python -c "from playwright.sync_api import sync_playwright"
 
 log "Pi Python harness venv ready"
