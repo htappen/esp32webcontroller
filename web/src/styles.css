@@ -21,8 +21,12 @@
   --screen-pad-bottom: max(1rem, env(safe-area-inset-bottom));
   --screen-pad-top: max(0.35rem, env(safe-area-inset-top));
   --button-size: 3.5rem;
-  --gamepad-width: min(123px, calc(50vw - 2rem));
-  --gamepad-height: min(232px, 100vh);
+  --gamepad-aspect-width: 123;
+  --gamepad-aspect-height: 232;
+  --gamepad-height: calc(100vh - var(--screen-pad-top) - var(--screen-pad-bottom));
+  --gamepad-width: calc(
+    var(--gamepad-height) * var(--gamepad-aspect-width) / var(--gamepad-aspect-height)
+  );
   font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
@@ -64,7 +68,7 @@ select {
   align-items: flex-end;
   justify-content: space-between;
   padding:
-    0
+    var(--screen-pad-top)
     var(--screen-pad-right)
     var(--screen-pad-bottom)
     var(--screen-pad-x);
@@ -73,6 +77,7 @@ select {
 
 .gamepad-half {
   position: relative;
+  flex: 0 0 auto;
   width: var(--gamepad-width);
   height: var(--gamepad-height);
   display: flex;
@@ -85,8 +90,8 @@ select {
 .gamepad-half svg {
   width: auto;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
 }
 
 .config-trigger,
@@ -298,11 +303,6 @@ input::placeholder {
 }
 
 @media (max-width: 540px) {
-  :root {
-    --gamepad-width: min(123px, calc(50vw - 1.25rem));
-    --gamepad-height: min(232px, 100vh);
-  }
-
   .modal-panel {
     padding: 1.2rem;
   }
