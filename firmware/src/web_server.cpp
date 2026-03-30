@@ -81,6 +81,7 @@ bool WebServerBridge::begin() {
     doc["network"]["activeStaSsid"] = ns.active_sta_ssid;
     doc["network"]["savedStaSsid"] = ns.saved_sta_ssid;
     doc["network"]["candidateStaSsid"] = ns.candidate_sta_ssid;
+    doc["device"]["board"] = config::kBoardName;
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
     doc["host"]["pairingEnabled"] = hs.pairing_enabled;

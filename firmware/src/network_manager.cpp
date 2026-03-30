@@ -5,6 +5,14 @@
 
 #include "config.h"
 
+namespace {
+#if defined(CONTROLLER_BOARD_WROOM)
+constexpr uint32_t kWifiModeSwitchDelayMs = 100;
+#elif defined(CONTROLLER_BOARD_S3)
+constexpr uint32_t kWifiModeSwitchDelayMs = 100;
+#endif
+}  // namespace
+
 NetworkManager::NetworkManager(DeviceSettingsStore* settings) : settings_(settings) {}
 
 bool NetworkManager::begin() {
@@ -151,7 +159,7 @@ void NetworkManager::beginStaAttempt() {
   ++sta_attempt_count_;
   stopAp();
   WiFi.disconnect(true, true);
-  delay(100);
+  delay(kWifiModeSwitchDelayMs);
   WiFi.setAutoReconnect(false);
   WiFi.setHostname(config::kApHostname);
   WiFi.mode(WIFI_STA);

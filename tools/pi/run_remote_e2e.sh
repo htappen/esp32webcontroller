@@ -7,6 +7,7 @@ REMOTE_BASE_DIR="${REMOTE_BASE_DIR:-/tmp/controller-pi-e2e}"
 PORT="${1:-}"
 RUN_BROWSER_TEST="${RUN_BROWSER_TEST:-1}"
 RUN_STA_TESTS="${RUN_STA_TESTS:-auto}"
+BOARD_NAME="${CONTROLLER_BOARD:-s3}"
 
 has_sta_test_config() {
   if [[ -n "${TEST_STA_SSID:-}" ]]; then
@@ -19,8 +20,8 @@ log() {
   printf '[pi-run] %s\n' "$1"
 }
 
-log "building, flashing, and validating ESP32 startup locally"
-ERASE_FLASH_FIRST=1 "${ROOT_DIR}/tools/hardware_integration_test.sh" "${PORT}"
+log "building, flashing, and validating ${BOARD_NAME} startup locally"
+CONTROLLER_BOARD="${BOARD_NAME}" ERASE_FLASH_FIRST=1 "${ROOT_DIR}/tools/hardware_integration_test.sh" "${PORT}"
 
 log "staging Pi helper scripts on ${PI_HOST}:${REMOTE_BASE_DIR}"
 tar -C "${ROOT_DIR}" -cf - tools/pi | ssh "${PI_HOST}" "rm -rf '${REMOTE_BASE_DIR}' && mkdir -p '${REMOTE_BASE_DIR}' && tar -C '${REMOTE_BASE_DIR}' -xf -"

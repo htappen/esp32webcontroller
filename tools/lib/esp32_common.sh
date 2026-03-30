@@ -9,7 +9,71 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIRMWARE_DIR="${ROOT_DIR}/firmware"
 VENV_DIR="${ROOT_DIR}/.venv"
 PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
-DEFAULT_ENV="esp32_wroom_32d"
+DEFAULT_BOARD="s3"
+
+canonical_board_name() {
+  local requested="${1:-${CONTROLLER_BOARD:-${BOARD:-${PIO_BOARD:-${DEFAULT_BOARD}}}}}"
+  requested="${requested,,}"
+
+  case "${requested}" in
+    s3|esp32-s3|esp32_s3|esp32_s3_devkitc_1|esp32-s3-devkitc-1)
+      printf 's3\n'
+      ;;
+    wroom|esp32|classic|esp32-wroom-32d|esp32_wroom_32d)
+      printf 'wroom\n'
+      ;;
+    *)
+      printf '[esp32] unsupported board "%s"; use "s3" or "wroom"\n' "${requested}" >&2
+      return 1
+      ;;
+  esac
+}
+
+board_to_pio_env() {
+  case "${1}" in
+    s3)
+      printf 'esp32_s3_devkitc_1\n'
+      ;;
+    wroom)
+      printf 'esp32_wroom_32d\n'
+      ;;
+    *)
+      printf '[esp32] unsupported canonical board "%s"\n' "${1}" >&2
+      return 1
+      ;;
+  esac
+}
+
+board_to_esptool_chip() {
+  case "${1}" in
+    s3)
+      printf 'esp32s3\n'
+      ;;
+    wroom)
+      printf 'esp32\n'
+      ;;
+    *)
+      printf '[esp32] unsupported canonical board "%s"\n' "${1}" >&2
+      return 1
+      ;;
+  esac
+}
+
+resolve_board() {
+  canonical_board_name "${1:-}"
+}
+
+resolve_pio_env() {
+  local board
+  board="$(resolve_board "${1:-}")" || return 1
+  board_to_pio_env "${board}"
+}
+
+resolve_esptool_chip() {
+  local board
+  board="$(resolve_board "${1:-}")" || return 1
+  board_to_esptool_chip "${board}"
+}
 
 require_virtualenv() {
   if [[ ! -d "${VENV_DIR}" ]]; then

@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "board_config.h"
+
 enum class NetworkMode : uint8_t {
   kAp = 0,
   kSta = 1,
@@ -25,4 +27,5 @@ static constexpr uint32_t kStaCandidateStartDelayMs = 750;
 static constexpr uint32_t kReportIntervalMs = 16;
 static constexpr char kBleDeviceName[] = "ESP32 Web Gamepad";
 static constexpr char kMdnsInstanceName[] = "ESP32 Controller";
+static constexpr const char* kBoardName = board_config::kBoardName;
 }  // namespace config

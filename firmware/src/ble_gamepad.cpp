@@ -9,8 +9,31 @@ namespace {
 constexpr int16_t kAxisMin = -32767;
 constexpr int16_t kAxisMax = 32767;
 constexpr int16_t kTriggerMax = 32767;
+constexpr uint16_t kPreferredConnIntervalMin = 24;
+constexpr uint16_t kPreferredConnIntervalMax = 48;
+constexpr uint16_t kAdvertisingInterval = 160;
+#if defined(CONTROLLER_BOARD_WROOM)
 constexpr uint32_t kAdvertisingInitialDelayMs = 1000;
 constexpr uint32_t kAdvertisingRetryMs = 1000;
+#elif defined(CONTROLLER_BOARD_S3)
+constexpr uint32_t kAdvertisingInitialDelayMs = 1000;
+constexpr uint32_t kAdvertisingRetryMs = 1000;
+#endif
+
+void configureAdvertising() {
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (advertising == nullptr) {
+    Serial.println("BLE advertising handle unavailable after init");
+    return;
+  }
+
+  advertising->enableScanResponse(true);
+  advertising->setScanFilter(false, false);
+  advertising->setAdvertisingInterval(kAdvertisingInterval);
+  advertising->setPreferredParams(kPreferredConnIntervalMin, kPreferredConnIntervalMax);
+  advertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
+  advertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
+}
 }  // namespace
 
 BleGamepadBridge::BleGamepadBridge() : ble_(config::kBleDeviceName, "ESP32 Web BLE Controller", 100, true) {}
@@ -28,8 +51,17 @@ bool BleGamepadBridge::begin() {
   cfg.setEnableOutputReport(false);
 
   ble_.begin(&cfg);
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+#if defined(CONTROLLER_BOARD_S3)
+  if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_PUBLIC)) {
+    Serial.println("BLE failed to force public address type on S3");
+  }
+#endif
+  configureAdvertising();
   started_ = true;
   next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
+  Serial.printf("BLE host ready: addr=%s board=%s\n", NimBLEDevice::getAddress().toString().c_str(),
+                config::kBoardName);
   return true;
 }
 
@@ -53,10 +85,13 @@ void BleGamepadBridge::loop() {
   }
 
   if (advertising->start()) {
+    Serial.printf("BLE advertising started: board=%s addr=%s\n", config::kBoardName,
+                  NimBLEDevice::getAddress().toString().c_str());
     next_advertising_attempt_ms_ = now;
     return;
   }
 
+  Serial.printf("BLE advertising start failed; retrying in %lu ms\n", static_cast<unsigned long>(kAdvertisingRetryMs));
   next_advertising_attempt_ms_ = now + kAdvertisingRetryMs;
 }
 
@@ -100,6 +135,7 @@ void BleGamepadBridge::setAdvertisingEnabled(bool enabled) {
   if (enabled) {
     return;
   } else {
+    Serial.println("BLE advertising disabled");
     advertising->stop();
   }
 }

@@ -5,7 +5,26 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${ROOT_DIR}/tools/lib/esp32_common.sh"
 
-UPLOAD_PORT="${1:-}"
+UPLOAD_PORT=""
+BOARD_OVERRIDE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --board)
+      BOARD_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    *)
+      if [[ -z "${UPLOAD_PORT}" ]]; then
+        UPLOAD_PORT="$1"
+        shift
+      else
+        printf '[upload] unknown argument: %s\n' "$1" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 log() {
   printf '[upload] %s\n' "$1"
@@ -21,7 +40,11 @@ pio_run() {
 
 activate_platformio_env
 
+BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
+ENV_NAME="$(resolve_pio_env "${BOARD_NAME}")"
+
 log "using PlatformIO core dir: ${PLATFORMIO_CORE_DIR}"
+log "using board target: ${BOARD_NAME} (${ENV_NAME})"
 UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
@@ -36,13 +59,13 @@ fi
 log "uploading filesystem image"
 (
   cd "${FIRMWARE_DIR}"
-  pio_run -e "${DEFAULT_ENV}" -t uploadfs
+  pio_run -e "${ENV_NAME}" -t uploadfs
 )
 
 log "uploading firmware image"
 (
   cd "${FIRMWARE_DIR}"
-  pio_run -e "${DEFAULT_ENV}" -t upload
+  pio_run -e "${ENV_NAME}" -t upload
 )
 
 log "upload complete"

@@ -31,14 +31,20 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
 3. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
 4. Install PlatformIO and ESP32 toolchain.
-5. Build firmware:
-   - `cd firmware && pio run -e esp32_wroom_32d`
-6. Upload filesystem assets:
+5. Select the default board target for your shell:
+   - `export CONTROLLER_BOARD=s3`
+   - Use `export CONTROLLER_BOARD=wroom` for classic ESP32-WROOM-32D boards.
+6. Build firmware:
+   - `./tools/build_firmware.sh`
+   - One-off override: `./tools/build_firmware.sh --board wroom`
+7. Upload filesystem assets and firmware:
    - `./tools/upload_firmware.sh /dev/ttyUSB0`
+   - One-off override: `./tools/upload_firmware.sh --board wroom /dev/ttyUSB0`
 7. Upload firmware:
-   - The script uploads both LittleFS assets and firmware for the `ESP32-WROOM-32D` target.
+   - The script uploads both LittleFS assets and firmware for the selected board target.
 8. Run the hardware startup integration check on an attached board:
    - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
+   - One-off override: `./tools/hardware_integration_test.sh --board wroom /dev/ttyUSB0`
 
 ## End User Guide
 

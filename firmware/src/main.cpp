@@ -25,7 +25,11 @@ void setup() {
   g_network.begin();
   g_host.begin();
   g_web.begin();
-  Serial.println("ESP32 web BLE controller scaffold booted");
+#if defined(CONTROLLER_BOARD_WROOM)
+  Serial.printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
+#elif defined(CONTROLLER_BOARD_S3)
+  Serial.printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
+#endif
 }
 
 void loop() {
