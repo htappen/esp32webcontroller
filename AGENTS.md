@@ -1,5 +1,11 @@
 # Project Plan
 # codex resume 019cba78-45f9-7003-ad59-451b095628be
+## Current State
+
+- The tracked plan is up to date through the UUID-derived device identity work and the BLE host-forget flow.
+- The main unresolved functional gap is still ESP32-S3 BLE pairing/runtime behavior on the Raspberry Pi end-to-end path.
+- The current worktree has no first-party source edits pending; only local changes under `third_party/` and `.codex/` are present.
+
 ## Current Next Steps
 
 1. [DONE] Support both classic `ESP32-WROOM-32D` and `ESP32-S3` in the firmware build and helper scripts.
@@ -44,22 +50,34 @@
 8. [DONE] Harden board-specific reliability.
    - Add reconnect/backoff behavior for Wi-Fi and BLE on classic ESP32.
    - Maintain neutral output on disconnect or stalled controller input.
-   - Persist settings in NVS/Preferences once the hardware path is stable.
+   - Persist runtime settings in NVS/Preferences once the hardware path is stable.
    - Verified on hardware that `/dev/ttyACM0` still passes the local startup integration flow after the reliability changes.
    - Verified from `controller-pi` that the direct WebSocket-to-BLE route still passes: neutral packet, button press, axis movement, and timeout-to-neutral.
    - Replaced the Pi-side Playwright path with a lighter Chromium page smoke check because the prior script was injecting JS and synthetic events rather than validating real UI behavior.
 
-9. [NEXT] Get ESP32-S3 BLE pairing/runtime behavior working end to end.
+9. [DONE] Add device identity propagation and BLE host-management controls.
+   - Added shared UUID-derived identity resolution in `tools/lib/device_identity.sh` and threaded it through build, upload, local hardware test, and Pi E2E tooling.
+   - Firmware now exposes board and identity metadata via boot logs and `/api/status`, including UUID, friendly name, hostname, and `.local` URL.
+   - Added the `/api/host/forget` API and UI action to drop the current BLE host bond so another device can pair.
+   - Pi-side E2E scripts now assert the resolved identity consistently across direct-IP, mDNS, and autodiscovery flows.
+
+10. [NEXT] Get ESP32-S3 BLE pairing/runtime behavior working end to end.
    - Reproduce and root-cause the current Pi-side failure: `org.bluez.Error.ConnectionAttemptFailed: Page Timeout` while pairing to `ESP32 Web Gamepad` on S3.
    - Compare NimBLE/`ESP32-BLE-Gamepad` behavior between WROOM and S3, including advertising/connectability state, address type, and any target-specific init ordering.
    - Add targeted S3-only instrumentation in firmware if needed so the failure can be diagnosed without guessing.
    - Re-run `tools/pi/run_remote_e2e.sh` against the attached S3 until BLE pairing, input event capture, and timeout-to-neutral pass again.
 
-10. [NEXT] Expand automated regression coverage beyond startup smoke tests.
+11. [NEXT] Add USB host-connected controller mode for supported ESP32 boards.
+   - Follow the transport-separation plan in `usb-refactor.md`: keep the web/state path shared, introduce a transport-neutral host report, and isolate BLE vs USB behavior behind a `HostTransport` interface.
+   - Treat `ESP32-S3` as the primary USB implementation target and keep classic `ESP32-WROOM-32D` on the BLE-only path unless external USB hardware is added.
+   - Start with `USB-Switch` on S3, then decide whether `USB-PC` should be a second transport variant or share the same USB backend with different descriptors.
+   - Keep the end-to-end testing model aligned with the refactor plan: shared scenario logic, transport-specific host probes, and USB validation with the ESP32 attached to the developer workstation while the Pi still drives the web path.
+
+12. [NEXT] Expand automated regression coverage beyond startup smoke tests.
    - Extend `test/host` coverage for mapper/protocol edge cases.
    - Add scripted checks for status endpoints and controller timeout behavior where feasible.
 
-11. Create new SVGs of different controller layouts.
+13. Create new SVGs of different controller layouts.
    - Nintendo 64
    - Playstation
    - Xbox
