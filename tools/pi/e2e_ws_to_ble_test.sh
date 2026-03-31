@@ -2,16 +2,23 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AP_SSID="${AP_SSID:-ESP32-Controller}"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/device_identity.sh"
+resolve_device_identity "test" "${CONTROLLER_DEVICE_UUID:-}"
+
+AP_SSID="${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}"
 AP_PASS="${AP_PASS:-}"
-BLE_NAME="${BLE_NAME:-ESP32 Web Gamepad}"
+BLE_NAME="${BLE_NAME:-${CONTROLLER_DEVICE_BLE_NAME}}"
 RAW_HTTP_BASE_URL="${RAW_HTTP_BASE_URL:-http://192.168.4.1}"
-MDNS_HTTP_BASE_URL="${MDNS_HTTP_BASE_URL:-http://game.local}"
+MDNS_HTTP_BASE_URL="${MDNS_HTTP_BASE_URL:-${CONTROLLER_DEVICE_LOCAL_URL}}"
 HTTP_BASE_URL="${HTTP_BASE_URL:-http://192.168.4.1}"
 WS_URL="${WS_URL:-ws://192.168.4.1:81}"
 EXPECTED_AP_IP="${EXPECTED_AP_IP:-192.168.4.1}"
 EXPECTED_AP_ACTIVE="${EXPECTED_AP_ACTIVE:-1}"
 EXPECTED_STA_CONNECTED="${EXPECTED_STA_CONNECTED:-0}"
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-${CONTROLLER_DEVICE_HOSTNAME}}"
+EXPECTED_LOCAL_URL="${EXPECTED_LOCAL_URL:-${CONTROLLER_DEVICE_LOCAL_URL}}"
+EXPECTED_FRIENDLY_NAME="${EXPECTED_FRIENDLY_NAME:-${CONTROLLER_DEVICE_FRIENDLY_NAME}}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
@@ -35,15 +42,66 @@ fetch_status() {
   curl --fail --silent --show-error "${base_url}/api/status" > "${output_file}"
 }
 
+assert_status_identity() {
+  local status_file="$1"
+  "${VENV_PYTHON}" - "${status_file}" "${EXPECTED_FRIENDLY_NAME}" "${AP_SSID}" "${BLE_NAME}" "${EXPECTED_HOSTNAME}" "${EXPECTED_LOCAL_URL}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    status = json.load(handle)
+
+friendly_name = sys.argv[2]
+ap_ssid = sys.argv[3]
+ble_name = sys.argv[4]
+hostname = sys.argv[5]
+local_url = sys.argv[6]
+
+device = status["device"]
+network = status["network"]
+host = status["host"]
+
+if device["friendlyName"] != friendly_name:
+    raise SystemExit(f"unexpected friendly name: {device['friendlyName']!r}")
+if network["apSsid"] != ap_ssid:
+    raise SystemExit(f"unexpected AP SSID: {network['apSsid']!r}")
+if host["bleName"] != ble_name:
+    raise SystemExit(f"unexpected BLE name: {host['bleName']!r}")
+if device["hostname"] != hostname:
+    raise SystemExit(f"unexpected hostname: {device['hostname']!r}")
+if device["hostnameLocal"] != local_url:
+    raise SystemExit(f"unexpected local URL: {device['hostnameLocal']!r}")
+
+print(json.dumps(device, separators=(",", ":"), sort_keys=True))
+PY
+}
+
 assert_http_endpoints_equivalent() {
   local raw_status_file="${TMP_DIR}/status_raw.json"
   local mdns_status_file="${TMP_DIR}/status_mdns.json"
+  local autodiscovered_url_file="${TMP_DIR}/autodiscovered_url.txt"
+  local autodiscovered_status_file="${TMP_DIR}/status_autodiscovered.json"
 
-  log "verifying raw IP and game.local return equivalent status payloads"
+  log "verifying raw IP, configured mDNS URL, and autodiscovered hostname return equivalent status payloads"
   fetch_status "${RAW_HTTP_BASE_URL}" "${raw_status_file}"
+  assert_status_identity "${raw_status_file}"
   fetch_status "${MDNS_HTTP_BASE_URL}" "${mdns_status_file}"
+  assert_status_identity "${mdns_status_file}"
 
-  "${VENV_PYTHON}" - "${raw_status_file}" "${mdns_status_file}" "${EXPECTED_AP_IP}" "${EXPECTED_AP_ACTIVE}" "${EXPECTED_STA_CONNECTED}" <<'PY'
+  "${VENV_PYTHON}" - "${raw_status_file}" <<'PY' > "${autodiscovered_url_file}"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    status = json.load(handle)
+
+print(status["device"]["hostnameLocal"])
+PY
+
+  fetch_status "$(cat "${autodiscovered_url_file}")" "${autodiscovered_status_file}"
+  assert_status_identity "${autodiscovered_status_file}"
+
+  "${VENV_PYTHON}" - "${raw_status_file}" "${mdns_status_file}" "${autodiscovered_status_file}" "${EXPECTED_AP_IP}" "${EXPECTED_AP_ACTIVE}" "${EXPECTED_STA_CONNECTED}" <<'PY'
 import json
 import sys
 
@@ -73,9 +131,12 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 with open(sys.argv[2], "r", encoding="utf-8") as handle:
     mdns_status = json.load(handle)
 
-expected_ap_ip = sys.argv[3]
-expected_ap_active = sys.argv[4] == "1"
-expected_sta_connected = sys.argv[5] == "1"
+with open(sys.argv[3], "r", encoding="utf-8") as handle:
+    autodiscovered_status = json.load(handle)
+
+expected_ap_ip = sys.argv[4]
+expected_ap_active = sys.argv[5] == "1"
+expected_sta_connected = sys.argv[6] == "1"
 
 if raw_status["network"]["apIp"] != expected_ap_ip:
     raise SystemExit(f"unexpected AP IP from raw endpoint: {raw_status['network']['apIp']!r}")
@@ -87,11 +148,18 @@ if bool(raw_status["network"]["staConnected"]) != expected_sta_connected:
     raise SystemExit("unexpected STA connected state from raw endpoint")
 
 if mdns_status["network"]["apIp"] != raw_status["network"]["apIp"]:
-    raise SystemExit("game.local resolved to a different AP IP")
+    raise SystemExit("configured mDNS URL resolved to a different AP IP")
+
+if normalize(autodiscovered_status) != normalize(raw_status):
+    raise SystemExit(
+        "autodiscovered hostname returned different stable status fields:\n"
+        f"raw={json.dumps(normalize(raw_status), sort_keys=True)}\n"
+        f"autodiscovered={json.dumps(normalize(autodiscovered_status), sort_keys=True)}"
+    )
 
 if normalize(raw_status) != normalize(mdns_status):
     raise SystemExit(
-        "raw IP and game.local returned different stable status fields:\n"
+        "raw IP and configured mDNS URL returned different stable status fields:\n"
         f"raw={json.dumps(normalize(raw_status), sort_keys=True)}\n"
         f"mdns={json.dumps(normalize(mdns_status), sort_keys=True)}"
     )
@@ -122,6 +190,7 @@ capture_case() {
 
 log "waiting for ESP32 HTTP status endpoint"
 fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/status.json"
+assert_status_identity "${TMP_DIR}/status.json"
 "${VENV_PYTHON}" - "${TMP_DIR}/status.json" "${EXPECTED_AP_IP}" "${EXPECTED_AP_ACTIVE}" "${EXPECTED_STA_CONNECTED}" <<'PY'
 import json
 import sys

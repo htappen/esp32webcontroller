@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ESP32 Controller</title>
+    <title>ESP32 Pad</title>
   </head>
   <body>
     <main class="app-shell">
@@ -25,8 +25,9 @@
         </button>
 
         <header class="modal-header">
-          <p class="kicker">ESP32 Web Gamepad</p>
+          <p id="device-name" class="kicker">ESP32 Pad</p>
           <h1 id="config-title">Configuration</h1>
+          <p id="device-hostname" class="section-copy">Loading device address...</p>
         </header>
 
         <section class="config-section">

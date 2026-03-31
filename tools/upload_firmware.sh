@@ -7,11 +7,16 @@ source "${ROOT_DIR}/tools/lib/esp32_common.sh"
 
 UPLOAD_PORT=""
 BOARD_OVERRIDE=""
+DEVICE_UUID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --board)
       BOARD_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --device-uuid)
+      DEVICE_UUID="${2:-}"
       shift 2
       ;;
     *)
@@ -42,9 +47,13 @@ activate_platformio_env
 
 BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
 ENV_NAME="$(resolve_pio_env "${BOARD_NAME}")"
+prepare_controller_identity "build" "${DEVICE_UUID}"
 
 log "using PlatformIO core dir: ${PLATFORMIO_CORE_DIR}"
 log "using board target: ${BOARD_NAME} (${ENV_NAME})"
+log "using device uuid: ${CONTROLLER_DEVICE_UUID}"
+log "using device name: ${CONTROLLER_DEVICE_FRIENDLY_NAME}"
+log "using device url: ${CONTROLLER_DEVICE_LOCAL_URL}"
 UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
@@ -57,6 +66,7 @@ else
 fi
 
 log "uploading filesystem image"
+"${ROOT_DIR}/tools/sync_web_assets.sh"
 (
   cd "${FIRMWARE_DIR}"
   pio_run -e "${ENV_NAME}" -t uploadfs

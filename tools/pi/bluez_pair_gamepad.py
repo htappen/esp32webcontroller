@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import sys
 import time
 
@@ -284,7 +285,7 @@ class Pairer:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device-name", default="ESP32 Web Gamepad")
+    parser.add_argument("--device-name", default=os.environ.get("BLE_NAME", "Sunny Maple Pad"))
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--attempts", type=int, default=3)
     args = parser.parse_args()

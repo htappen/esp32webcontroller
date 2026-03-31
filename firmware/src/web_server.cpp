@@ -77,11 +77,17 @@ bool WebServerBridge::begin() {
     doc["network"]["candidateUpdateInProgress"] = ns.candidate_update_in_progress;
     doc["network"]["lastCandidateFailed"] = ns.last_candidate_failed;
     doc["network"]["apIp"] = ns.ap_ip.toString();
+    doc["network"]["apSsid"] = config::kApSsid;
     doc["network"]["staIp"] = ns.sta_ip.toString();
     doc["network"]["activeStaSsid"] = ns.active_sta_ssid;
     doc["network"]["savedStaSsid"] = ns.saved_sta_ssid;
     doc["network"]["candidateStaSsid"] = ns.candidate_sta_ssid;
     doc["device"]["board"] = config::kBoardName;
+    doc["device"]["uuid"] = config::kDeviceUuid;
+    doc["device"]["friendlyName"] = config::kFriendlyName;
+    doc["device"]["hostname"] = config::kApHostname;
+    doc["device"]["hostnameLocal"] = config::kLocalUrl;
+    doc["host"]["bleName"] = config::kBleDeviceName;
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
     doc["host"]["pairingEnabled"] = hs.pairing_enabled;

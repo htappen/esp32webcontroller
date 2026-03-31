@@ -13,6 +13,8 @@ pageController = new PageStateController({
   transportStatusEl: document.getElementById('transport-status'),
   layoutStatusEl: document.getElementById('layout-status'),
   hostActionStatusEl: document.getElementById('host-action-status'),
+  deviceNameEl: document.getElementById('device-name'),
+  deviceHostnameEl: document.getElementById('device-hostname'),
   staForm: document.getElementById('sta-form'),
   forgetHostEl: document.getElementById('forget-host'),
   layoutSelectEl: document.getElementById('layout-select'),

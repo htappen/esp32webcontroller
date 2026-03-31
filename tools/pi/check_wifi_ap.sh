@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SSID="${1:-ESP32-Controller}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/device_identity.sh"
+resolve_device_identity "test" "${CONTROLLER_DEVICE_UUID:-}"
+
+SSID="${1:-${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}}"
 PASS="${2:-}"
 IFACE="${3:-wlan0}"
 

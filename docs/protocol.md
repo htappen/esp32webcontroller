@@ -41,7 +41,7 @@
 
 ## Transport
 
-- Controller stream transport: WebSocket on `ws://game.local:81` by default
+- Controller stream transport: WebSocket on `ws://<device-hostname>.local:81` when opened by hostname
 - Text frames contain one controller JSON packet per frame.
 - On disconnect or packet timeout (`kWsTimeoutMs`), firmware resets to neutral state.
 

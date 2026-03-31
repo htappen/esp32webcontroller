@@ -194,9 +194,9 @@ Expected outcome:
 
 Once the ESP32 is powered:
 
-1. On the Pi, join Wi-Fi `ESP32-Controller`.
-2. Confirm `http://game.local` opens in Chromium or via `curl`.
-3. Use `bluetoothctl scan on` and look for `ESP32 Web Gamepad`.
+1. On the Pi, join the ESP32 Wi-Fi network, for example `Sunny Maple Pad`.
+2. Confirm the UUID-derived `.local` hostname, for example `http://sunny-maple.local`, opens in Chromium or via `curl`.
+3. Use `bluetoothctl scan on` and look for the matching BLE name, for example `Sunny Maple Pad`.
 
 This confirms the Pi can act as both test browser host and BLE receiver.
 

@@ -49,6 +49,8 @@ export class PageStateController {
     this.transportStatusEl = opts.transportStatusEl;
     this.layoutStatusEl = opts.layoutStatusEl;
     this.hostActionStatusEl = opts.hostActionStatusEl;
+    this.deviceNameEl = opts.deviceNameEl;
+    this.deviceHostnameEl = opts.deviceHostnameEl;
     this.staForm = opts.staForm;
     this.forgetHostEl = opts.forgetHostEl;
     this.layoutSelectEl = opts.layoutSelectEl;
@@ -120,12 +122,25 @@ export class PageStateController {
     }
 
     const net = status.network || {};
+    const device = status.device || {};
     const host = status.host || {};
     const controller = status.controller || {};
 
+    if (this.deviceNameEl) {
+      this.deviceNameEl.textContent = device.friendlyName || 'ESP32 Pad';
+    }
+    if (this.deviceHostnameEl) {
+      this.deviceHostnameEl.textContent = device.hostnameLocal
+        ? `Open ${device.hostnameLocal}`
+        : 'Device address unavailable.';
+    }
+    if (device.friendlyName) {
+      document.title = `${device.friendlyName} Pad`;
+    }
+
     this.networkStatusEl.textContent = formatNetworkStatus(net);
     this.hostStatusEl.textContent =
-      `Host ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${controller.wsConnected ? 'live' : 'idle'}`;
+      `${host.bleName || 'BLE host'} ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${controller.wsConnected ? 'live' : 'idle'}`;
   }
 
   async refreshStatus() {

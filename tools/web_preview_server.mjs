@@ -51,8 +51,8 @@ Options:
   --root <dir>         Static build directory to serve. Default: web/dist
   --host <host>        Bind host. Default: 0.0.0.0
   --port <port>        Bind port. Default: 8080
-  --api-target <url>   Proxy /api/* to this origin, e.g. http://game.local
-  --ws-target <url>    Proxy /ws to this websocket target, e.g. ws://game.local:81
+  --api-target <url>   Proxy /api/* to this origin, e.g. http://sunny-maple.local
+  --ws-target <url>    Proxy /ws to this websocket target, e.g. ws://sunny-maple.local:81
 `);
 }
 

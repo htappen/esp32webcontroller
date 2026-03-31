@@ -2,14 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/device_identity.sh"
+resolve_device_identity "test" "${CONTROLLER_DEVICE_UUID:-}"
+
 PHASE="${1:-}"
-AP_SSID="${AP_SSID:-ESP32-Controller}"
+AP_SSID="${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}"
 AP_PASS="${AP_PASS:-}"
 TEST_STA_SSID="${TEST_STA_SSID:-}"
 TEST_STA_PASS="${TEST_STA_PASS:-}"
 TEST_BAD_STA_SSID="${TEST_BAD_STA_SSID:-controller-invalid-ssid}"
 TEST_BAD_STA_PASS="${TEST_BAD_STA_PASS:-invalid-password}"
-BLE_NAME="${BLE_NAME:-ESP32 Web Gamepad}"
+BLE_NAME="${BLE_NAME:-${CONTROLLER_DEVICE_BLE_NAME}}"
 FALLBACK_WAIT_SECONDS="${FALLBACK_WAIT_SECONDS:-70}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
@@ -160,9 +164,9 @@ run_shared_network_e2e() {
   AP_SSID="${TEST_STA_SSID}" \
   AP_PASS="${TEST_STA_PASS}" \
   RAW_HTTP_BASE_URL="http://${sta_ip}" \
-  MDNS_HTTP_BASE_URL="http://game.local" \
-  HTTP_BASE_URL="http://game.local" \
-  WS_URL="ws://game.local:81" \
+  MDNS_HTTP_BASE_URL="${CONTROLLER_DEVICE_LOCAL_URL}" \
+  HTTP_BASE_URL="${CONTROLLER_DEVICE_LOCAL_URL}" \
+  WS_URL="ws://${CONTROLLER_DEVICE_HOSTNAME}.local:81" \
   EXPECTED_AP_IP="0.0.0.0" \
   EXPECTED_AP_ACTIVE="0" \
   EXPECTED_STA_CONNECTED="1" \
@@ -181,21 +185,21 @@ case "${PHASE}" in
     post_sta_update "http://192.168.4.1" "${TEST_STA_SSID}" "${TEST_STA_PASS}"
     log "joining shared Wi-Fi to verify STA promotion"
     "${SCRIPT_DIR}/check_wifi_ap.sh" "${TEST_STA_SSID}" "${TEST_STA_PASS}"
-    wait_for_status "http://game.local" "${TMP_DIR}/sta_status.json" 40 2 || fail "timed out waiting for STA status over game.local"
+    wait_for_status "${CONTROLLER_DEVICE_LOCAL_URL}" "${TMP_DIR}/sta_status.json" 40 2 || fail "timed out waiting for STA status over mDNS"
     assert_sta_status "${TMP_DIR}/sta_status.json" "${TEST_STA_SSID}"
     run_shared_network_e2e "$(extract_sta_ip "${TMP_DIR}/sta_status.json")"
     ;;
   verify-saved)
     log "joining shared Wi-Fi to verify saved credentials after reboot"
     "${SCRIPT_DIR}/check_wifi_ap.sh" "${TEST_STA_SSID}" "${TEST_STA_PASS}"
-    wait_for_status "http://game.local" "${TMP_DIR}/saved_status.json" 40 2 || fail "timed out waiting for saved STA reconnect"
+    wait_for_status "${CONTROLLER_DEVICE_LOCAL_URL}" "${TMP_DIR}/saved_status.json" 40 2 || fail "timed out waiting for saved STA reconnect"
     assert_sta_status "${TMP_DIR}/saved_status.json" "${TEST_STA_SSID}"
     run_shared_network_e2e "$(extract_sta_ip "${TMP_DIR}/saved_status.json")"
     ;;
   bad-update)
     log "joining shared Wi-Fi to submit a bad STA update"
     "${SCRIPT_DIR}/check_wifi_ap.sh" "${TEST_STA_SSID}" "${TEST_STA_PASS}"
-    post_sta_update "http://game.local" "${TEST_BAD_STA_SSID}" "${TEST_BAD_STA_PASS}"
+    post_sta_update "${CONTROLLER_DEVICE_LOCAL_URL}" "${TEST_BAD_STA_SSID}" "${TEST_BAD_STA_PASS}"
     log "waiting for fallback AP after failed candidate update"
     wait_for_wifi_connection "${AP_SSID}" "${AP_PASS}" "${FALLBACK_WAIT_SECONDS}" || fail "timed out waiting for fallback AP visibility after bad STA update"
     wait_for_status "http://192.168.4.1" "${TMP_DIR}/bad_update_status.json" 40 2 || fail "timed out waiting for fallback AP after bad STA update"

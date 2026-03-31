@@ -8,7 +8,7 @@ import subprocess
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--page-url", default="http://game.local")
+    parser.add_argument("--page-url", default="http://sunny-maple.local")
     parser.add_argument("--chromium-bin")
     parser.add_argument("--virtual-time-budget-ms", type=int, default=5000)
     parser.add_argument("--min-svg-count", type=int, default=2)
@@ -37,7 +37,7 @@ def main() -> int:
 
     title_match = re.search(r"<title>(.*?)</title>", dom, flags=re.IGNORECASE | re.DOTALL)
     title = title_match.group(1).strip() if title_match else ""
-    if title != "ESP32 Controller":
+    if not title.endswith("Pad"):
         raise RuntimeError(f"unexpected page title: {title!r}")
 
     if 'id="controller-stage"' not in dom:

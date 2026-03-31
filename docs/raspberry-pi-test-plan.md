@@ -28,9 +28,9 @@ The test should be runnable remotely from the ChromeOS development machine over 
 
 ### Data Plane
 
-- Pi joins ESP32 AP `ESP32-Controller`.
-- Pi opens the controller web UI at `http://game.local`.
-- Pi pairs to BLE device `ESP32 Web Gamepad`.
+- Pi joins the ESP32 AP using the UUID-derived SSID, for example `Sunny Maple Pad`.
+- Pi opens the controller web UI at the UUID-derived hostname, for example `http://sunny-maple.local`.
+- Pi pairs to the BLE device using the same UUID-derived name, for example `Sunny Maple Pad`.
 - Pi injects UI input and records Linux input events from the BLE gamepad device.
 
 ## Implementation Phases
@@ -48,9 +48,9 @@ Deliverables:
 
 Checks:
 
-- Pi can scan for and pair to `ESP32 Web Gamepad`
+- Pi can scan for and pair to the UUID-derived BLE name
 - BLE gamepad appears as a Linux input device
-- Pi can join `ESP32-Controller`
+- Pi can join the UUID-derived AP SSID
 
 ### Phase 2: Scripted Direct-WebSocket E2E
 
@@ -65,9 +65,9 @@ Flow:
 
 1. Join ESP32 AP.
 2. Pair to the BLE gamepad.
-3. Confirm `http://192.168.4.1/api/status` and `http://game.local/api/status` return equivalent controller status.
+3. Confirm `http://192.168.4.1/api/status` and the UUID-derived `.local` hostname return equivalent controller status.
 4. Start input capture on the Pi.
-5. Send known controller packets to `ws://game.local:81`.
+5. Send known controller packets to `ws://<device-hostname>.local:81`.
 6. Assert corresponding Linux input events arrive.
 
 Pass criteria:
@@ -90,7 +90,7 @@ Flow:
 
 1. Recreate a repo-managed Python venv on the Pi for all Pi-side Python helpers and install the Python test requirements there.
 2. Start headless Chromium on the Pi from that venv-backed harness.
-3. Open `http://game.local`.
+3. Open the UUID-derived `.local` hostname served by the flashed firmware.
 4. Drive the on-screen controller with browser automation against the actual SVG tap targets.
 5. Assert matching Linux input events from the BLE device.
 

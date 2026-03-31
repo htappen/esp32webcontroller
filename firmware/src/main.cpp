@@ -30,6 +30,8 @@ void setup() {
 #elif defined(CONTROLLER_BOARD_S3)
   Serial.printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
 #endif
+  Serial.printf("Device identity: uuid=%s name=%s hostname=%s local=%s\n", config::kDeviceUuid,
+                config::kFriendlyName, config::kApHostname, config::kLocalUrl);
 }
 
 void loop() {

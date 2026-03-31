@@ -36,7 +36,7 @@ void configureAdvertising() {
 }
 }  // namespace
 
-BleGamepadBridge::BleGamepadBridge() : ble_(config::kBleDeviceName, "ESP32 Web BLE Controller", 100, true) {}
+BleGamepadBridge::BleGamepadBridge() : ble_(config::kBleDeviceName, config::kFriendlyName, 100, true) {}
 
 bool BleGamepadBridge::begin() {
   BleGamepadConfiguration cfg;
@@ -51,17 +51,21 @@ bool BleGamepadBridge::begin() {
   cfg.setEnableOutputReport(false);
 
   ble_.begin(&cfg);
-  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 #if defined(CONTROLLER_BOARD_S3)
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_PUBLIC)) {
     Serial.println("BLE failed to force public address type on S3");
   }
-#endif
   configureAdvertising();
+#endif
   started_ = true;
   next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
+#if defined(CONTROLLER_BOARD_S3)
   Serial.printf("BLE host ready: addr=%s board=%s\n", NimBLEDevice::getAddress().toString().c_str(),
                 config::kBoardName);
+#else
+  Serial.printf("BLE host ready: board=%s\n", config::kBoardName);
+#endif
   return true;
 }
 
@@ -85,8 +89,12 @@ void BleGamepadBridge::loop() {
   }
 
   if (advertising->start()) {
+#if defined(CONTROLLER_BOARD_S3)
     Serial.printf("BLE advertising started: board=%s addr=%s\n", config::kBoardName,
                   NimBLEDevice::getAddress().toString().c_str());
+#else
+    Serial.printf("BLE advertising started: board=%s\n", config::kBoardName);
+#endif
     next_advertising_attempt_ms_ = now;
     return;
   }

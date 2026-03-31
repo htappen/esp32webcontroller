@@ -14,14 +14,14 @@ Usage: ./tools/serve_web_preview.sh [--device-host HOST] [--host HOST] [--port P
 Builds the web UI from web/src and serves the built bundle locally.
 
 Options:
-  --device-host HOST   Proxy ESP32 traffic to this host, e.g. game.local or 192.168.4.1
+  --device-host HOST   Proxy ESP32 traffic to this host, e.g. sunny-maple.local or 192.168.4.1
   --host HOST          Local bind host. Default: 0.0.0.0
   --port PORT          Local bind port. Default: 8080
   -h, --help           Show this help
 
 Examples:
   ./tools/serve_web_preview.sh
-  ./tools/serve_web_preview.sh --device-host game.local
+  ./tools/serve_web_preview.sh --device-host sunny-maple.local
   ./tools/serve_web_preview.sh --device-host 192.168.4.1 --port 9090
 EOF
 }

@@ -2,9 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AP_SSID="${AP_SSID:-ESP32-Controller}"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/device_identity.sh"
+resolve_device_identity "test" "${CONTROLLER_DEVICE_UUID:-}"
+
+AP_SSID="${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}"
 AP_PASS="${AP_PASS:-}"
-PAGE_URL="${PAGE_URL:-http://game.local}"
+PAGE_URL="${PAGE_URL:-${CONTROLLER_DEVICE_LOCAL_URL}}"
 TMP_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "${TMP_DIR}"

@@ -10,6 +10,8 @@ FIRMWARE_DIR="${ROOT_DIR}/firmware"
 VENV_DIR="${ROOT_DIR}/.venv"
 PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
 DEFAULT_BOARD="s3"
+# shellcheck disable=SC1091
+source "${ROOT_DIR}/tools/lib/device_identity.sh"
 
 canonical_board_name() {
   local requested="${1:-${CONTROLLER_BOARD:-${BOARD:-${PIO_BOARD:-${DEFAULT_BOARD}}}}}"
@@ -87,6 +89,22 @@ activate_platformio_env() {
   # shellcheck disable=SC1091
   source "${VENV_DIR}/bin/activate"
   export PLATFORMIO_CORE_DIR
+}
+
+prepare_controller_identity() {
+  local mode="${1:-test}"
+  local explicit_uuid="${2:-${CONTROLLER_DEVICE_UUID:-}}"
+  resolve_device_identity "${mode}" "${explicit_uuid}" || return 1
+  export CONTROLLER_DEVICE_UUID
+  export CONTROLLER_DEVICE_ADJECTIVE
+  export CONTROLLER_DEVICE_NOUN
+  export CONTROLLER_DEVICE_FRIENDLY_NAME
+  export CONTROLLER_DEVICE_AP_SSID
+  export CONTROLLER_DEVICE_BLE_NAME
+  export CONTROLLER_DEVICE_HOSTNAME
+  export CONTROLLER_DEVICE_MDNS_INSTANCE_NAME
+  export CONTROLLER_DEVICE_LOCAL_URL
+  write_device_identity_header
 }
 
 detect_serial_port() {

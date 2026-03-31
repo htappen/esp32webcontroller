@@ -9,6 +9,7 @@ PORT=""
 BOARD_OVERRIDE=""
 ERASE_FLASH_FIRST="${ERASE_FLASH_FIRST:-0}"
 BOOT_LOG_DURATION_SECONDS="${BOOT_LOG_DURATION_SECONDS:-}"
+DEVICE_UUID="${CONTROLLER_DEVICE_UUID:-${DEFAULT_TEST_DEVICE_UUID}}"
 LOG_FILE="$(mktemp)"
 cleanup() {
   rm -f "${LOG_FILE}"
@@ -30,6 +31,10 @@ while [[ $# -gt 0 ]]; do
       BOARD_OVERRIDE="${2:-}"
       shift 2
       ;;
+    --device-uuid)
+      DEVICE_UUID="${2:-}"
+      shift 2
+      ;;
     *)
       if [[ -z "${PORT}" ]]; then
         PORT="$1"
@@ -49,6 +54,7 @@ fi
 activate_platformio_env
 BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
 ENV_NAME="${PIO_ENV:-$(resolve_pio_env "${BOARD_NAME}")}"
+prepare_controller_identity "test" "${DEVICE_UUID}"
 
 if [[ -z "${BOOT_LOG_DURATION_SECONDS}" ]]; then
   if [[ "${BOARD_NAME}" == "s3" ]]; then
@@ -64,13 +70,15 @@ if [[ "${ERASE_FLASH_FIRST}" == "1" ]]; then
 fi
 
 log "building firmware for ${BOARD_NAME} via ${ENV_NAME}"
+log "using device uuid ${CONTROLLER_DEVICE_UUID}"
+log "expecting device name ${CONTROLLER_DEVICE_FRIENDLY_NAME}"
 (
   cd "${FIRMWARE_DIR}"
   pio run -e "${ENV_NAME}"
 )
 
 log "uploading filesystem and firmware to ${PORT}"
-"${ROOT_DIR}/tools/upload_firmware.sh" --board "${BOARD_NAME}" "${PORT}"
+"${ROOT_DIR}/tools/upload_firmware.sh" --board "${BOARD_NAME}" --device-uuid "${CONTROLLER_DEVICE_UUID}" "${PORT}"
 
 log "capturing boot log from ${PORT}"
 "${ROOT_DIR}/tools/capture_boot_log.sh" "${PORT}" "${BOOT_LOG_DURATION_SECONDS}" | tee "${LOG_FILE}"

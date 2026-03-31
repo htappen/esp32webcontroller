@@ -18,6 +18,7 @@ __pycache__
 # PlatformIO
 firmware/.pio/
 firmware/data/
+firmware/src/generated/
 
 # Test artifacts
 coverage/
