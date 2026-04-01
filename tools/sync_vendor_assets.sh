@@ -52,7 +52,11 @@ if [[ "${BUILD}" -eq 1 ]]; then
   fi
 
   pushd "${SUBMODULE_DIR}" >/dev/null
-  npm install
+  if [[ ! -d "${SUBMODULE_DIR}/node_modules" ]]; then
+    echo "missing ${SUBMODULE_DIR}/node_modules" >&2
+    echo "run ./tools/setup_env.sh or npm install in ${SUBMODULE_DIR}" >&2
+    exit 1
+  fi
   npm run build
   popd >/dev/null
 fi

@@ -17,7 +17,7 @@ fi
 
 log "clearing generated web assets from firmware/data"
 mkdir -p "${FIRMWARE_DATA_DIR}"
-find "${FIRMWARE_DATA_DIR}" -mindepth 1 -maxdepth 1 ! -name vendor -exec rm -rf {} +
+find "${FIRMWARE_DATA_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 log "linting web sources"
 (

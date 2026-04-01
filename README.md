@@ -28,24 +28,22 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
    - `./tools/setup_env.sh`
 2. Initialize git submodules:
    - `git submodule update --init --recursive`
-3. Sync browser vendor assets from submodules:
-   - `./tools/sync_vendor_assets.sh`
-4. Install PlatformIO and ESP32 toolchain.
-5. Select the default board target for your shell:
+3. Install PlatformIO and ESP32 toolchain.
+4. Select the default board target for your shell:
    - `export CONTROLLER_BOARD=s3`
    - Use `export CONTROLLER_BOARD=wroom` for classic ESP32-WROOM-32D boards.
-6. Build firmware:
+5. Build firmware:
    - `./tools/build_firmware.sh`
    - One-off override: `./tools/build_firmware.sh --board wroom`
    - One-off UUID override: `./tools/build_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be`
-7. Upload filesystem assets and firmware:
+6. Upload filesystem assets and firmware:
    - `./tools/upload_firmware.sh /dev/ttyUSB0`
    - One-off override: `./tools/upload_firmware.sh --board wroom /dev/ttyUSB0`
    - One-off UUID override: `./tools/upload_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be /dev/ttyUSB0`
-8. Upload firmware:
+7. Upload firmware:
    - The script uploads both LittleFS assets and firmware for the selected board target.
-   - Every PlatformIO firmware build now clears generated web assets, runs the web lint checks, rebuilds the minified Vite bundle, and recopies the bundle into `firmware/data/` automatically.
-9. Run the hardware startup integration check on an attached board:
+   - Every PlatformIO firmware build now clears generated web assets, runs the app web lint checks, rebuilds the minified Vite bundle, and recopies the embedded app into `firmware/data/` automatically.
+8. Run the hardware startup integration check on an attached board:
    - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
    - One-off override: `./tools/hardware_integration_test.sh --board wroom /dev/ttyUSB0`
 
@@ -109,15 +107,4 @@ After cloning:
 git submodule update --init --recursive
 ```
 
-Then sync the browser assets used by the embedded web UI:
-
-```bash
-./tools/sync_vendor_assets.sh
-```
-
-The repo intentionally does not track copied vendor output under `firmware/data/vendor/`.
-If you need to rebuild the submodule's dist files first, run:
-
-```bash
-./tools/sync_vendor_assets.sh --build
-```
+The embedded web UI uses the `virtual-gamepad-lib` submodule as a build-time dependency through the Vite app. The firmware image does not need a copied `firmware/data/vendor/` mirror of that package.

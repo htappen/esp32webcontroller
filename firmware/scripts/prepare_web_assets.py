@@ -11,9 +11,9 @@ def prepare_web_assets():
 
     project_dir = Path(env["PROJECT_DIR"]).resolve()
     root_dir = project_dir.parent
-    script_path = root_dir / "tools" / "sync_web_assets.sh"
+    script_path = root_dir / "tools" / "prepare_embedded_assets.sh"
 
-    print("[pio] preparing web assets")
+    print("[pio] preparing embedded assets")
     subprocess.run([str(script_path)], check=True, cwd=root_dir)
 
 prepare_web_assets()
