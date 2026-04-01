@@ -41,6 +41,20 @@ function formatNetworkStatus(net) {
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}${detailParts.length ? '  ' : ''}${detailParts.join(' ')}`;
 }
 
+function formatHostStatus(host, controller) {
+  const transport = String(host.transport || 'ble');
+  const variant = String(host.variant || 'default');
+  const browserState = controller.wsConnected ? 'live' : 'idle';
+
+  if (transport === 'usb') {
+    const modeLabel = variant === 'switch' ? 'USB-Switch' : 'USB';
+    const connection = host.connected ? 'connected' : (host.ready ? 'ready' : 'starting');
+    return `${host.displayName || modeLabel} ${connection}  Host mode ${modeLabel}  Browser ${browserState}`;
+  }
+
+  return `${host.displayName || host.bleName || 'BLE host'} ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${browserState}`;
+}
+
 export class PageStateController {
   constructor(opts) {
     this.apiBase = opts.apiBase || '';
@@ -139,8 +153,14 @@ export class PageStateController {
     }
 
     this.networkStatusEl.textContent = formatNetworkStatus(net);
-    this.hostStatusEl.textContent =
-      `${host.bleName || 'BLE host'} ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${controller.wsConnected ? 'live' : 'idle'}`;
+    this.hostStatusEl.textContent = formatHostStatus(host, controller);
+
+    const pairingSupported = !!host.supportsPairing;
+    this.forgetHostEl.hidden = !pairingSupported;
+    this.forgetHostEl.disabled = !pairingSupported;
+    this.hostActionStatusEl.textContent = pairingSupported
+      ? 'Remove the currently connected BLE host bond so another device can pair.'
+      : 'BLE-only pairing controls are hidden while the host transport is wired USB.';
   }
 
   async refreshStatus() {
@@ -180,6 +200,9 @@ export class PageStateController {
   }
 
   async onForgetHost() {
+    if (this.forgetHostEl.hidden) {
+      return;
+    }
     this.forgetHostEl.disabled = true;
     this.hostActionStatusEl.textContent = 'Forgetting current Bluetooth host...';
 
@@ -190,7 +213,7 @@ export class PageStateController {
       window.setTimeout(() => this.refreshStatus(), 500);
     } catch (err) {
       if (err.message === 'Request failed: 409') {
-        this.hostActionStatusEl.textContent = 'No Bluetooth host is connected right now.';
+        this.hostActionStatusEl.textContent = 'Bluetooth host reset is unavailable in the current host mode.';
       } else {
         this.hostActionStatusEl.textContent = `Failed to forget Bluetooth host: ${err.message}`;
       }

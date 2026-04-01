@@ -15,6 +15,16 @@ if [[ ! -d "${WEB_DIR}/node_modules" ]]; then
   exit 1
 fi
 
+log "clearing generated web assets from firmware/data"
+mkdir -p "${FIRMWARE_DATA_DIR}"
+find "${FIRMWARE_DATA_DIR}" -mindepth 1 -maxdepth 1 ! -name vendor -exec rm -rf {} +
+
+log "linting web sources"
+(
+  cd "${WEB_DIR}"
+  npm run lint
+)
+
 log "building web bundle"
 (
   cd "${WEB_DIR}"
@@ -22,10 +32,6 @@ log "building web bundle"
 )
 
 log "syncing web/dist into firmware/data"
-mkdir -p "${FIRMWARE_DATA_DIR}"
-rm -f "${FIRMWARE_DATA_DIR}/index.html" "${FIRMWARE_DATA_DIR}/app.js" "${FIRMWARE_DATA_DIR}/app.css"
-cp "${WEB_DIST_DIR}/index.html" "${FIRMWARE_DATA_DIR}/index.html"
-cp "${WEB_DIST_DIR}/app.js" "${FIRMWARE_DATA_DIR}/app.js"
-cp "${WEB_DIST_DIR}/app.css" "${FIRMWARE_DATA_DIR}/app.css"
+cp -R "${WEB_DIST_DIR}/." "${FIRMWARE_DATA_DIR}/"
 
 log "web assets synced"

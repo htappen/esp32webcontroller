@@ -1,6 +1,6 @@
 #pragma once
 
-// Centralized firmware-level constants for networking, timing, and BLE identity.
+// Centralized firmware-level constants for networking, timing, and host identity.
 
 #include <stdint.h>
 
@@ -51,6 +51,7 @@ static constexpr uint32_t kStaReconnectBackoffMs = 3000;
 static constexpr uint32_t kStaCandidateStartDelayMs = 750;
 static constexpr uint32_t kReportIntervalMs = 16;
 static constexpr char kBleDeviceName[] = CONTROLLER_BLE_NAME;
+static constexpr char kUsbSwitchProductName[] = CONTROLLER_FRIENDLY_NAME " Pad";
 static constexpr char kMdnsInstanceName[] = CONTROLLER_MDNS_INSTANCE_NAME;
 static constexpr char kFriendlyName[] = CONTROLLER_FRIENDLY_NAME;
 static constexpr char kDeviceUuid[] = CONTROLLER_DEVICE_UUID;

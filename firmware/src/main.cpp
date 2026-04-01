@@ -47,11 +47,6 @@ void loop() {
   const uint32_t now = millis();
   if (now - g_last_report_ms >= config::kReportIntervalMs) {
     g_last_report_ms = now;
-    const ControllerState current = g_state.snapshot();
-    const BleReport report = InputMapper::map(current);
-    BleGamepadBridge* bridge = g_host.bridge();
-    if (bridge != nullptr && bridge->connected()) {
-      bridge->send(report);
-    }
+    g_host.sendReport(InputMapper::map(g_state.snapshot()));
   }
 }

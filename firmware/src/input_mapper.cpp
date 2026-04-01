@@ -14,8 +14,8 @@ static uint8_t to_trigger(float v) {
 }
 }  // namespace
 
-BleReport InputMapper::map(const ControllerState& in) {
-  BleReport out;
+HostInputReport InputMapper::map(const ControllerState& in) {
+  HostInputReport out;
   out.lx = to_axis(in.ax.lx);
   out.ly = to_axis(in.ax.ly);
   out.rx = to_axis(in.ax.rx);

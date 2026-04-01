@@ -1,32 +1,63 @@
 #include "host_connection.h"
 
-HostConnectionManager::HostConnectionManager(DeviceSettingsStore* settings) : settings_(settings) {}
+#include "ble_gamepad.h"
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
+#include "usb_switch_gamepad.h"
+#endif
+
+namespace {
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
+UsbSwitchGamepadBridge g_usb_transport;
+#else
+BleGamepadBridge g_ble_transport;
+#endif
+}  // namespace
+
+HostConnectionManager::HostConnectionManager(DeviceSettingsStore* settings) : settings_(settings) {
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
+  transport_ = &g_usb_transport;
+#else
+  transport_ = &g_ble_transport;
+#endif
+}
 
 bool HostConnectionManager::begin() {
+  if (transport_ == nullptr) {
+    return false;
+  }
   if (settings_ != nullptr) {
     const DeviceRuntimeSettings runtime = settings_->loadRuntimeSettings();
     pairing_enabled_ = runtime.pairing_enabled;
   }
-  if (!ble_.begin()) {
+  if (!transport_->begin()) {
     return false;
   }
-  ble_.setAdvertisingEnabled(pairing_enabled_);
+  transport_->setPairingEnabled(pairing_enabled_);
   refreshStatus();
   return true;
 }
 
 void HostConnectionManager::loop() {
-  ble_.loop();
+  if (transport_ == nullptr) {
+    return;
+  }
+  transport_->loop();
   refreshStatus();
 }
 
 bool HostConnectionManager::forgetCurrentHost() {
-  const bool forgotten = ble_.forgetCurrentBond();
+  if (transport_ == nullptr || !status_.supports_pairing) {
+    return false;
+  }
+  const bool forgotten = transport_->resetConnection();
   refreshStatus();
   return forgotten;
 }
 
 bool HostConnectionManager::setPairingEnabled(bool enabled) {
+  if (transport_ == nullptr || !status_.supports_pairing) {
+    return false;
+  }
   const bool previous = pairing_enabled_;
   bool saved = true;
   if (settings_ != nullptr) {
@@ -37,27 +68,36 @@ bool HostConnectionManager::setPairingEnabled(bool enabled) {
 
   if (!saved) {
     pairing_enabled_ = previous;
-    ble_.setAdvertisingEnabled(previous);
+    transport_->setPairingEnabled(previous);
     refreshStatus();
     return false;
   }
 
   pairing_enabled_ = enabled;
-  ble_.setAdvertisingEnabled(enabled);
+  transport_->setPairingEnabled(enabled);
   refreshStatus();
   return saved;
+}
+
+bool HostConnectionManager::sendReport(const HostInputReport& report) {
+  if (transport_ == nullptr) {
+    return false;
+  }
+  return transport_->send(report);
 }
 
 HostStatus HostConnectionManager::status() const {
   return status_;
 }
 
-BleGamepadBridge* HostConnectionManager::bridge() {
-  return &ble_;
-}
-
 void HostConnectionManager::refreshStatus() {
-  status_.connected = ble_.connected();
-  status_.advertising = ble_.advertisingEnabled();
-  status_.pairing_enabled = pairing_enabled_;
+  if (transport_ == nullptr) {
+    status_ = HostStatus{};
+    status_.ready = false;
+    return;
+  }
+  status_ = transport_->status();
+  if (status_.supports_pairing) {
+    status_.pairing_enabled = pairing_enabled_;
+  }
 }

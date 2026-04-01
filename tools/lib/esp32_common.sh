@@ -10,6 +10,7 @@ FIRMWARE_DIR="${ROOT_DIR}/firmware"
 VENV_DIR="${ROOT_DIR}/.venv"
 PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
 DEFAULT_BOARD="s3"
+DEFAULT_HOST_MODE="ble"
 # shellcheck disable=SC1091
 source "${ROOT_DIR}/tools/lib/device_identity.sh"
 
@@ -32,15 +33,44 @@ canonical_board_name() {
 }
 
 board_to_pio_env() {
-  case "${1}" in
-    s3)
+  local board="${1}"
+  local host_mode="${2:-${CONTROLLER_HOST_MODE:-${HOST_MODE:-${DEFAULT_HOST_MODE}}}}"
+  host_mode="${host_mode,,}"
+
+  case "${board}:${host_mode}" in
+    s3:ble)
       printf 'esp32_s3_devkitc_1\n'
       ;;
-    wroom)
+    s3:usb_switch|s3:usb-switch|s3:switch)
+      printf 'esp32_s3_devkitc_1_usb_switch\n'
+      ;;
+    wroom:ble)
       printf 'esp32_wroom_32d\n'
       ;;
+    wroom:usb_switch|wroom:usb-switch|wroom:switch)
+      printf '[esp32] board "%s" does not support native USB host mode\n' "${board}" >&2
+      return 1
+      ;;
     *)
-      printf '[esp32] unsupported canonical board "%s"\n' "${1}" >&2
+      printf '[esp32] unsupported board/mode combination "%s:%s"\n' "${board}" "${host_mode}" >&2
+      return 1
+      ;;
+  esac
+}
+
+canonical_host_mode() {
+  local requested="${1:-${CONTROLLER_HOST_MODE:-${HOST_MODE:-${DEFAULT_HOST_MODE}}}}"
+  requested="${requested,,}"
+
+  case "${requested}" in
+    ble|bluetooth)
+      printf 'ble\n'
+      ;;
+    usb_switch|usb-switch|switch)
+      printf 'usb_switch\n'
+      ;;
+    *)
+      printf '[esp32] unsupported host mode "%s"; use "ble" or "usb_switch"\n' "${requested}" >&2
       return 1
       ;;
   esac
@@ -68,7 +98,9 @@ resolve_board() {
 resolve_pio_env() {
   local board
   board="$(resolve_board "${1:-}")" || return 1
-  board_to_pio_env "${board}"
+  local host_mode
+  host_mode="$(canonical_host_mode "${2:-}")" || return 1
+  board_to_pio_env "${board}" "${host_mode}"
 }
 
 resolve_esptool_chip() {

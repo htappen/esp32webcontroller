@@ -1,15 +1,9 @@
 #pragma once
 
-// Host link manager that owns the BLE bridge and exposes pairing/connection state.
+// Host link manager that owns the active host transport and exposes its status.
 
-#include "ble_gamepad.h"
 #include "device_settings.h"
-
-struct HostStatus {
-  bool advertising = false;
-  bool connected = false;
-  bool pairing_enabled = true;
-};
+#include "host_transport.h"
 
 class HostConnectionManager {
  public:
@@ -19,15 +13,14 @@ class HostConnectionManager {
 
   bool forgetCurrentHost();
   bool setPairingEnabled(bool enabled);
+  bool sendReport(const HostInputReport& report);
   HostStatus status() const;
-
-  BleGamepadBridge* bridge();
 
  private:
   void refreshStatus();
 
   DeviceSettingsStore* settings_ = nullptr;
-  BleGamepadBridge ble_;
+  HostTransport* transport_ = nullptr;
   HostStatus status_;
   bool pairing_enabled_ = true;
 };

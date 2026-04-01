@@ -103,8 +103,8 @@ void BleGamepadBridge::loop() {
   next_advertising_attempt_ms_ = now + kAdvertisingRetryMs;
 }
 
-bool BleGamepadBridge::connected() {
-  return started_ && ble_.isConnected();
+bool BleGamepadBridge::connected() const {
+  return started_ && const_cast<BleGamepad&>(ble_).isConnected();
 }
 
 bool BleGamepadBridge::forgetCurrentBond() {
@@ -125,6 +125,15 @@ bool BleGamepadBridge::forgetCurrentBond() {
 
   server->disconnect(conn_handle);
   next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
+  return true;
+}
+
+bool BleGamepadBridge::resetConnection() {
+  return forgetCurrentBond();
+}
+
+bool BleGamepadBridge::setPairingEnabled(bool enabled) {
+  setAdvertisingEnabled(enabled);
   return true;
 }
 
@@ -156,9 +165,9 @@ bool BleGamepadBridge::advertisingEnabled() const {
   return advertising_enabled_ && advertising != nullptr && advertising->isAdvertising();
 }
 
-void BleGamepadBridge::send(const BleReport& report) {
+bool BleGamepadBridge::send(const HostInputReport& report) {
   if (!connected()) {
-    return;
+    return false;
   }
 
   // Map to an Xbox-like logical layout over generic HID buttons.
@@ -178,6 +187,20 @@ void BleGamepadBridge::send(const BleReport& report) {
   ble_.setTriggers(toTriggerAxis(report.lt), toTriggerAxis(report.rt));
   ble_.setHat1(toHatValue(report.btn));
   ble_.sendReport();
+  return true;
+}
+
+HostStatus BleGamepadBridge::status() const {
+  HostStatus status;
+  status.transport = "ble";
+  status.variant = "default";
+  status.display_name = config::kBleDeviceName;
+  status.ready = started_;
+  status.connected = connected();
+  status.supports_pairing = true;
+  status.pairing_enabled = advertising_enabled_;
+  status.advertising = advertisingEnabled();
+  return status;
 }
 
 int8_t BleGamepadBridge::toHatValue(const Buttons& btn) {

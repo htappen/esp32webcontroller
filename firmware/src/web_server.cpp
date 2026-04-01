@@ -87,9 +87,14 @@ bool WebServerBridge::begin() {
     doc["device"]["friendlyName"] = config::kFriendlyName;
     doc["device"]["hostname"] = config::kApHostname;
     doc["device"]["hostnameLocal"] = config::kLocalUrl;
+    doc["host"]["transport"] = hs.transport;
+    doc["host"]["variant"] = hs.variant;
+    doc["host"]["displayName"] = hs.display_name;
     doc["host"]["bleName"] = config::kBleDeviceName;
+    doc["host"]["ready"] = hs.ready;
     doc["host"]["advertising"] = hs.advertising;
     doc["host"]["connected"] = hs.connected;
+    doc["host"]["supportsPairing"] = hs.supports_pairing;
     doc["host"]["pairingEnabled"] = hs.pairing_enabled;
     doc["controller"]["wsConnected"] = ws_client_connected_;
     doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
@@ -136,7 +141,7 @@ bool WebServerBridge::begin() {
 
   g_http.on("/api/host/forget", HTTP_POST, [this]() {
     if (!host_->forgetCurrentHost()) {
-      g_http.send(409, "application/json", "{\"error\":\"no_connected_host\"}");
+      g_http.send(409, "application/json", "{\"error\":\"host_reset_unavailable\"}");
       return;
     }
     g_http.send(200, "application/json", "{\"ok\":true,\"status\":\"host_forgotten\"}");
@@ -152,7 +157,7 @@ bool WebServerBridge::begin() {
 
     const bool enabled = req["enabled"].as<bool>();
     if (!host_->setPairingEnabled(enabled)) {
-      g_http.send(500, "application/json", "{\"error\":\"settings_persist_failed\"}");
+      g_http.send(409, "application/json", "{\"error\":\"pairing_control_unavailable\"}");
       return;
     }
 
@@ -282,12 +287,7 @@ void WebServerBridge::resetControllerState() {
 }
 
 void WebServerBridge::sendNeutralReport() {
-  BleGamepadBridge* bridge = host_->bridge();
-  if (bridge == nullptr || !bridge->connected()) {
-    return;
-  }
-  const BleReport report = InputMapper::map(state_->snapshot());
-  bridge->send(report);
+  host_->sendReport(InputMapper::map(state_->snapshot()));
 }
 
 void WebServerBridge::syncMdns(const NetworkStatus& status) {

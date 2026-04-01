@@ -1,12 +1,12 @@
 #pragma once
 
-// Maps normalized web controller state into BLE HID axis/button report values.
+// Maps normalized web controller state into transport-neutral host report values.
 
 #include <stdint.h>
 
 #include "state_store.h"
 
-struct BleReport {
+struct HostInputReport {
   int16_t lx = 0;
   int16_t ly = 0;
   int16_t rx = 0;
@@ -18,5 +18,5 @@ struct BleReport {
 
 class InputMapper {
  public:
-  static BleReport map(const ControllerState& in);
+  static HostInputReport map(const ControllerState& in);
 };

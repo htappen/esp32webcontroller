@@ -30,22 +30,21 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
    - `git submodule update --init --recursive`
 3. Sync browser vendor assets from submodules:
    - `./tools/sync_vendor_assets.sh`
-4. Sync the web UI bundle into `firmware/data/`:
-   - `./tools/sync_web_assets.sh`
-5. Install PlatformIO and ESP32 toolchain.
-6. Select the default board target for your shell:
+4. Install PlatformIO and ESP32 toolchain.
+5. Select the default board target for your shell:
    - `export CONTROLLER_BOARD=s3`
    - Use `export CONTROLLER_BOARD=wroom` for classic ESP32-WROOM-32D boards.
-7. Build firmware:
+6. Build firmware:
    - `./tools/build_firmware.sh`
    - One-off override: `./tools/build_firmware.sh --board wroom`
    - One-off UUID override: `./tools/build_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be`
-8. Upload filesystem assets and firmware:
+7. Upload filesystem assets and firmware:
    - `./tools/upload_firmware.sh /dev/ttyUSB0`
    - One-off override: `./tools/upload_firmware.sh --board wroom /dev/ttyUSB0`
    - One-off UUID override: `./tools/upload_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be /dev/ttyUSB0`
 8. Upload firmware:
    - The script uploads both LittleFS assets and firmware for the selected board target.
+   - Every PlatformIO firmware build now clears generated web assets, runs the web lint checks, rebuilds the minified Vite bundle, and recopies the bundle into `firmware/data/` automatically.
 9. Run the hardware startup integration check on an attached board:
    - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
    - One-off override: `./tools/hardware_integration_test.sh --board wroom /dev/ttyUSB0`

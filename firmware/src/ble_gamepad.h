@@ -6,22 +6,25 @@
 
 #include <BleGamepad.h>
 
-#include "input_mapper.h"
+#include "host_transport.h"
 
-class BleGamepadBridge {
+class BleGamepadBridge : public HostTransport {
  public:
   BleGamepadBridge();
-  bool begin();
-  void loop();
-  bool connected();
-  bool forgetCurrentBond();
-  void setAdvertisingEnabled(bool enabled);
-  bool advertisingEnabled() const;
-  void send(const BleReport& report);
+  bool begin() override;
+  void loop() override;
+  bool resetConnection() override;
+  bool setPairingEnabled(bool enabled) override;
+  bool send(const HostInputReport& report) override;
+  HostStatus status() const override;
 
  private:
   static int8_t toHatValue(const Buttons& btn);
   static int16_t toTriggerAxis(uint8_t trigger);
+  bool connected() const;
+  bool forgetCurrentBond();
+  void setAdvertisingEnabled(bool enabled);
+  bool advertisingEnabled() const;
 
   BleGamepad ble_;
   bool started_ = false;
