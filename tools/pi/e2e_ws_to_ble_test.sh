@@ -42,6 +42,16 @@ fetch_status() {
   curl --fail --silent --show-error "${base_url}/api/status" > "${output_file}"
 }
 
+ensure_controller_reachable() {
+  local preflight_status="${TMP_DIR}/status_preflight.json"
+  if fetch_status "${HTTP_BASE_URL}" "${preflight_status}" >/dev/null 2>&1; then
+    log "controller already reachable at ${HTTP_BASE_URL}; skipping AP join"
+    return 0
+  fi
+
+  "${SCRIPT_DIR}/check_wifi_ap.sh" "${AP_SSID}" "${AP_PASS}"
+}
+
 assert_status_identity() {
   local status_file="$1"
   "${VENV_PYTHON}" - "${status_file}" "${EXPECTED_FRIENDLY_NAME}" "${AP_SSID}" "${BLE_NAME}" "${EXPECTED_HOSTNAME}" "${EXPECTED_LOCAL_URL}" <<'PY'
@@ -185,7 +195,7 @@ capture_case() {
 
 "${SCRIPT_DIR}/bootstrap_pi.sh"
 "${SCRIPT_DIR}/setup_python_harness.sh"
-"${SCRIPT_DIR}/check_wifi_ap.sh" "${AP_SSID}" "${AP_PASS}"
+ensure_controller_reachable
 "${SCRIPT_DIR}/check_bluetooth.sh"
 
 log "waiting for ESP32 HTTP status endpoint"
