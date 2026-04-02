@@ -33,17 +33,33 @@
 }
 ```
 
+Delta packets may omit unchanged fields. The receiver merges partial `btn` and `ax` objects into the previous controller state.
+
+```json
+{
+  "t": 1234578,
+  "seq": 43,
+  "btn": {
+    "a": 1
+  },
+  "ax": {
+    "lx": -0.12
+  }
+}
+```
+
 ## Semantics
 
 - Axes are normalized to `[-1.0, 1.0]` for sticks, `[0.0, 1.0]` for triggers.
 - `seq` must increase monotonically.
+- Browser clients should send a full controller snapshot on connect and at least once per second; in between, they may send only changed fields.
 - Firmware drops invalid payloads and can emit debug counters.
 
 ## Transport
 
 - Controller stream transport: WebSocket on `ws://<device-hostname>.local:81` when opened by hostname
 - Text frames contain one controller JSON packet per frame.
-- On disconnect or packet timeout (`kWsTimeoutMs`), firmware resets to neutral state.
+- On disconnect or packet timeout (`kWsTimeoutMs`, currently 1500 ms), firmware resets to neutral state.
 
 ## Control APIs
 

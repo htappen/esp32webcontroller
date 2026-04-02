@@ -19,9 +19,38 @@ bool parse_button(JsonVariantConst value) {
   }
   return false;
 }
+
+bool parse_axis(JsonVariantConst value, float* out) {
+  if (out == nullptr || value.isNull()) {
+    return false;
+  }
+  if (value.is<float>() || value.is<double>() || value.is<int>() || value.is<long>() ||
+      value.is<unsigned int>() || value.is<unsigned long>()) {
+    *out = value.as<float>();
+    return true;
+  }
+  return false;
+}
+
+void apply_button_if_present(JsonVariantConst object, const char* key, bool* out) {
+  if (out == nullptr) {
+    return;
+  }
+  const JsonVariantConst value = object[key];
+  if (!value.isNull()) {
+    *out = parse_button(value);
+  }
+}
+
+void apply_axis_if_present(JsonVariantConst object, const char* key, float* out) {
+  float parsed = 0.0f;
+  if (parse_axis(object[key], &parsed) && out != nullptr) {
+    *out = parsed;
+  }
+}
 }  // namespace
 
-bool WsBridge::parseJson(const char* payload, ControllerState* out) const {
+bool WsBridge::parseJson(const char* payload, const ControllerState& base, ControllerState* out) const {
   if (payload == nullptr || out == nullptr) {
     return false;
   }
@@ -32,33 +61,33 @@ bool WsBridge::parseJson(const char* payload, ControllerState* out) const {
     return false;
   }
 
-  ControllerState state;
+  ControllerState state = base;
   state.t = doc["t"] | 0;
   state.seq = doc["seq"] | 0;
 
   JsonVariantConst btn = doc["btn"];
-  state.btn.a = parse_button(btn["a"]);
-  state.btn.b = parse_button(btn["b"]);
-  state.btn.x = parse_button(btn["x"]);
-  state.btn.y = parse_button(btn["y"]);
-  state.btn.lb = parse_button(btn["lb"]);
-  state.btn.rb = parse_button(btn["rb"]);
-  state.btn.back = parse_button(btn["back"]);
-  state.btn.start = parse_button(btn["start"]);
-  state.btn.ls = parse_button(btn["ls"]);
-  state.btn.rs = parse_button(btn["rs"]);
-  state.btn.du = parse_button(btn["du"]);
-  state.btn.dd = parse_button(btn["dd"]);
-  state.btn.dl = parse_button(btn["dl"]);
-  state.btn.dr = parse_button(btn["dr"]);
+  apply_button_if_present(btn, "a", &state.btn.a);
+  apply_button_if_present(btn, "b", &state.btn.b);
+  apply_button_if_present(btn, "x", &state.btn.x);
+  apply_button_if_present(btn, "y", &state.btn.y);
+  apply_button_if_present(btn, "lb", &state.btn.lb);
+  apply_button_if_present(btn, "rb", &state.btn.rb);
+  apply_button_if_present(btn, "back", &state.btn.back);
+  apply_button_if_present(btn, "start", &state.btn.start);
+  apply_button_if_present(btn, "ls", &state.btn.ls);
+  apply_button_if_present(btn, "rs", &state.btn.rs);
+  apply_button_if_present(btn, "du", &state.btn.du);
+  apply_button_if_present(btn, "dd", &state.btn.dd);
+  apply_button_if_present(btn, "dl", &state.btn.dl);
+  apply_button_if_present(btn, "dr", &state.btn.dr);
 
   JsonVariantConst ax = doc["ax"];
-  state.ax.lx = ax["lx"] | 0.0f;
-  state.ax.ly = ax["ly"] | 0.0f;
-  state.ax.rx = ax["rx"] | 0.0f;
-  state.ax.ry = ax["ry"] | 0.0f;
-  state.ax.lt = ax["lt"] | 0.0f;
-  state.ax.rt = ax["rt"] | 0.0f;
+  apply_axis_if_present(ax, "lx", &state.ax.lx);
+  apply_axis_if_present(ax, "ly", &state.ax.ly);
+  apply_axis_if_present(ax, "rx", &state.ax.rx);
+  apply_axis_if_present(ax, "ry", &state.ax.ry);
+  apply_axis_if_present(ax, "lt", &state.ax.lt);
+  apply_axis_if_present(ax, "rt", &state.ax.rt);
 
   *out = state;
   return true;

@@ -2,6 +2,13 @@ import { setupPresetInteractiveGamepad } from '../../third_party/virtual-gamepad
 import { GamepadEmulator } from '../../third_party/virtual-gamepad-lib/dist/GamepadEmulator.js';
 import LEFT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-left.svg?raw';
 import RIGHT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-right.svg?raw';
+import {
+  AXIS_INDEX_TO_KEY,
+  BUTTON_INDEX_TO_KEY,
+  FULL_STATE_INTERVAL_MS,
+  TRIGGER_BUTTON_INDEX_TO_AXIS_KEY,
+  createNeutralControllerState,
+} from './schema.js';
 
 export class GamepadController {
   constructor(opts) {
@@ -13,21 +20,19 @@ export class GamepadController {
 
     this.emulatedGamepadIndex = 0;
     this.gpadEmulator = new GamepadEmulator(0.1);
+    this.gpadApiWrapper = null;
     this.ws = null;
     this.seq = 0;
     this.retryDelayMs = 1000;
-    this.state = {
-      t: 0,
-      seq: 0,
-      btn: { a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, back: 0, start: 0, ls: 0, rs: 0, du: 0, dd: 0, dl: 0, dr: 0 },
-      ax: { lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0 },
-    };
+    this.fullStateIntervalId = null;
+    this.state = createNeutralControllerState();
   }
 
   async start() {
     this.initVirtualGamepad();
+    this.bindGamepadEvents();
     this.connectWs();
-    this.tick();
+    this.startFullStateLoop();
   }
 
   setTransportStatus(message) {
@@ -40,12 +45,13 @@ export class GamepadController {
     this.leftEl.innerHTML = LEFT_GPAD_SVG_SOURCE_CODE;
     this.rightEl.innerHTML = RIGHT_GPAD_SVG_SOURCE_CODE;
 
-    setupPresetInteractiveGamepad(this.stageEl, {
+    const { gpadApiWrapper } = setupPresetInteractiveGamepad(this.stageEl, {
       AllowDpadDiagonals: true,
       GpadEmulator: this.gpadEmulator,
       EmulatedGamepadIndex: this.emulatedGamepadIndex,
       EmulatedGamepadOverlayMode: true,
     });
+    this.gpadApiWrapper = gpadApiWrapper;
   }
 
   connectWs() {
@@ -55,6 +61,7 @@ export class GamepadController {
     this.ws.onopen = () => {
       this.retryDelayMs = 1000;
       this.setTransportStatus('Browser link live.');
+      this.sendFullState();
     };
 
     this.ws.onclose = () => {
@@ -66,6 +73,87 @@ export class GamepadController {
     this.ws.onerror = () => {
       this.setTransportStatus('Browser link error.');
     };
+  }
+
+  bindGamepadEvents() {
+    if (!this.gpadApiWrapper) {
+      return;
+    }
+
+    this.gpadApiWrapper.onGamepadButtonChange((gpadIndex, gpad, buttonChanges) => {
+      if (gpadIndex !== this.emulatedGamepadIndex) {
+        return;
+      }
+
+      const btnDelta = {};
+      const axDelta = {};
+      for (let index = 0; index < buttonChanges.length; index += 1) {
+        if (!buttonChanges[index]) {
+          continue;
+        }
+
+        const button = gpad?.buttons?.[index];
+        if (!button) {
+          continue;
+        }
+
+        const buttonKey = BUTTON_INDEX_TO_KEY[index];
+        if (buttonKey) {
+          const nextValue = button.pressed ? 1 : 0;
+          if (this.state.btn[buttonKey] !== nextValue) {
+            this.state.btn[buttonKey] = nextValue;
+            btnDelta[buttonKey] = nextValue;
+          }
+        }
+
+        const triggerAxisKey = TRIGGER_BUTTON_INDEX_TO_AXIS_KEY[index];
+        if (triggerAxisKey) {
+          const nextValue = this.clamp(button.value, 0, 1);
+          if (this.state.ax[triggerAxisKey] !== nextValue) {
+            this.state.ax[triggerAxisKey] = nextValue;
+            axDelta[triggerAxisKey] = nextValue;
+          }
+        }
+      }
+
+      this.sendDeltaState(btnDelta, axDelta);
+    });
+
+    this.gpadApiWrapper.onGamepadAxisChange((gpadIndex, gpad, axisChangesMask) => {
+      if (gpadIndex !== this.emulatedGamepadIndex) {
+        return;
+      }
+
+      const axDelta = {};
+      for (let index = 0; index < axisChangesMask.length; index += 1) {
+        if (!axisChangesMask[index]) {
+          continue;
+        }
+
+        const axisKey = AXIS_INDEX_TO_KEY[index];
+        if (!axisKey) {
+          continue;
+        }
+
+        const nextValue = this.readAxis(gpad, index);
+        if (this.state.ax[axisKey] !== nextValue) {
+          this.state.ax[axisKey] = nextValue;
+          axDelta[axisKey] = nextValue;
+        }
+      }
+
+      this.sendDeltaState({}, axDelta);
+    });
+  }
+
+  startFullStateLoop() {
+    if (this.fullStateIntervalId !== null) {
+      window.clearInterval(this.fullStateIntervalId);
+    }
+
+    this.fullStateIntervalId = window.setInterval(() => {
+      this.sendFullState();
+    }, FULL_STATE_INTERVAL_MS);
   }
 
   clamp(value, min, max) {
@@ -93,63 +181,35 @@ export class GamepadController {
     return this.clamp(value, -1, 1);
   }
 
-  syncStateFromGamepad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gpad = pads?.[this.emulatedGamepadIndex] ?? null;
-
-    const b0 = this.readButton(gpad, 0);
-    const b1 = this.readButton(gpad, 1);
-    const b2 = this.readButton(gpad, 2);
-    const b3 = this.readButton(gpad, 3);
-    const b4 = this.readButton(gpad, 4);
-    const b5 = this.readButton(gpad, 5);
-    const b6 = this.readButton(gpad, 6);
-    const b7 = this.readButton(gpad, 7);
-    const b8 = this.readButton(gpad, 8);
-    const b9 = this.readButton(gpad, 9);
-    const b10 = this.readButton(gpad, 10);
-    const b11 = this.readButton(gpad, 11);
-    const b12 = this.readButton(gpad, 12);
-    const b13 = this.readButton(gpad, 13);
-    const b14 = this.readButton(gpad, 14);
-    const b15 = this.readButton(gpad, 15);
-
-    this.state.btn.a = b0.pressed ? 1 : 0;
-    this.state.btn.b = b1.pressed ? 1 : 0;
-    this.state.btn.x = b2.pressed ? 1 : 0;
-    this.state.btn.y = b3.pressed ? 1 : 0;
-    this.state.btn.lb = b4.pressed ? 1 : 0;
-    this.state.btn.rb = b5.pressed ? 1 : 0;
-    this.state.btn.back = b8.pressed ? 1 : 0;
-    this.state.btn.start = b9.pressed ? 1 : 0;
-    this.state.btn.ls = b10.pressed ? 1 : 0;
-    this.state.btn.rs = b11.pressed ? 1 : 0;
-    this.state.btn.du = b12.pressed ? 1 : 0;
-    this.state.btn.dd = b13.pressed ? 1 : 0;
-    this.state.btn.dl = b14.pressed ? 1 : 0;
-    this.state.btn.dr = b15.pressed ? 1 : 0;
-
-    this.state.ax.lx = this.readAxis(gpad, 0);
-    this.state.ax.ly = this.readAxis(gpad, 1);
-    this.state.ax.rx = this.readAxis(gpad, 2);
-    this.state.ax.ry = this.readAxis(gpad, 3);
-    this.state.ax.lt = this.clamp(b6.value, 0, 1);
-    this.state.ax.rt = this.clamp(b7.value, 0, 1);
-  }
-
-  sendCurrentState() {
+  sendPacket(packet) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    this.state.t = Date.now();
-    this.state.seq = ++this.seq;
-    this.ws.send(JSON.stringify(this.state));
+    packet.t = Date.now();
+    packet.seq = ++this.seq;
+    this.ws.send(JSON.stringify(packet));
   }
 
-  tick() {
-    this.syncStateFromGamepad();
-    this.sendCurrentState();
-    window.requestAnimationFrame(() => this.tick());
+  sendDeltaState(btnDelta = {}, axDelta = {}) {
+    if (Object.keys(btnDelta).length === 0 && Object.keys(axDelta).length === 0) {
+      return;
+    }
+
+    const packet = {};
+    if (Object.keys(btnDelta).length > 0) {
+      packet.btn = btnDelta;
+    }
+    if (Object.keys(axDelta).length > 0) {
+      packet.ax = axDelta;
+    }
+    this.sendPacket(packet);
+  }
+
+  sendFullState() {
+    this.sendPacket({
+      btn: { ...this.state.btn },
+      ax: { ...this.state.ax },
+    });
   }
 }

@@ -177,8 +177,10 @@ bool BleGamepadBridge::send(const HostInputReport& report) {
   if (report.btn.y) ble_.press(BUTTON_4); else ble_.release(BUTTON_4);
   if (report.btn.lb) ble_.press(BUTTON_5); else ble_.release(BUTTON_5);
   if (report.btn.rb) ble_.press(BUTTON_6); else ble_.release(BUTTON_6);
-  if (report.btn.back) ble_.press(BUTTON_7); else ble_.release(BUTTON_7);
-  if (report.btn.start) ble_.press(BUTTON_8); else ble_.release(BUTTON_8);
+  //if (report.btn.back) ble_.press(BUTTON_7); else ble_.release(BUTTON_7);
+  //if (report.btn.start) ble_.press(BUTTON_8); else ble_.release(BUTTON_8);
+  if (report.btn.back) ble_.pressSelect(); else ble_.releaseSelect();
+  if (report.btn.start) ble_.pressStart(); else ble_.releaseStart();
   if (report.btn.ls) ble_.press(BUTTON_9); else ble_.release(BUTTON_9);
   if (report.btn.rs) ble_.press(BUTTON_10); else ble_.release(BUTTON_10);
 

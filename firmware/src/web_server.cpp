@@ -253,7 +253,7 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
       }
 
       ControllerState next;
-      if (!ws_parser_.parseJson(message.c_str(), &next)) {
+      if (!ws_parser_.parseJson(message.c_str(), state_->snapshot(), &next)) {
         ++ws_packets_rejected_;
         return;
       }

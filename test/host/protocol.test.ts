@@ -13,4 +13,17 @@ describe('protocol packet', () => {
     assert.equal(typeof packet.seq, 'number');
     assert.equal(packet.btn.a, 0);
   });
+
+  it('accepts sparse delta packets', () => {
+    const packet = {
+      t: Date.now(),
+      seq: 2,
+      btn: { a: 1, dr: 1 },
+      ax: { lx: -0.5 },
+    };
+
+    assert.equal(packet.btn.a, 1);
+    assert.equal(packet.btn.dr, 1);
+    assert.equal(packet.ax.lx, -0.5);
+  });
 });

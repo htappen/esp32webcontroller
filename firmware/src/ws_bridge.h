@@ -8,5 +8,5 @@
 
 class WsBridge {
  public:
-  bool parseJson(const char* payload, ControllerState* out) const;
+  bool parseJson(const char* payload, const ControllerState& base, ControllerState* out) const;
 };
