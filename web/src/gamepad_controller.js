@@ -1,5 +1,6 @@
 import { setupPresetInteractiveGamepad } from '../../third_party/virtual-gamepad-lib/dist/helpers.js';
 import { GamepadEmulator } from '../../third_party/virtual-gamepad-lib/dist/GamepadEmulator.js';
+import { gamepadEmulationState } from '../../third_party/virtual-gamepad-lib/dist/enums.js';
 import LEFT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-left.svg?raw';
 import RIGHT_GPAD_SVG_SOURCE_CODE from '../../third_party/virtual-gamepad-lib/gamepad_assets/rounded/display-gamepad-right.svg?raw';
 import {
@@ -19,6 +20,7 @@ export class GamepadController {
     this.onTransportStatus = opts.onTransportStatus;
 
     this.emulatedGamepadIndex = 0;
+    this.activeEmulatedGamepadIndex = null;
     this.gpadEmulator = new GamepadEmulator(0.1);
     this.gpadApiWrapper = null;
     this.ws = null;
@@ -49,9 +51,10 @@ export class GamepadController {
       AllowDpadDiagonals: true,
       GpadEmulator: this.gpadEmulator,
       EmulatedGamepadIndex: this.emulatedGamepadIndex,
-      EmulatedGamepadOverlayMode: true,
+      EmulatedGamepadOverlayMode: false,
     });
     this.gpadApiWrapper = gpadApiWrapper;
+    this.refreshActiveEmulatedGamepadIndex();
   }
 
   connectWs() {
@@ -80,8 +83,16 @@ export class GamepadController {
       return;
     }
 
+    this.gpadApiWrapper.onGamepadConnect(() => {
+      this.refreshActiveEmulatedGamepadIndex();
+    });
+
+    this.gpadApiWrapper.onGamepadDisconnect(() => {
+      this.refreshActiveEmulatedGamepadIndex();
+    });
+
     this.gpadApiWrapper.onGamepadButtonChange((gpadIndex, gpad, buttonChanges) => {
-      if (gpadIndex !== this.emulatedGamepadIndex) {
+      if (!this.isActiveEmulatedGamepad(gpadIndex, gpad)) {
         return;
       }
 
@@ -120,7 +131,7 @@ export class GamepadController {
     });
 
     this.gpadApiWrapper.onGamepadAxisChange((gpadIndex, gpad, axisChangesMask) => {
-      if (gpadIndex !== this.emulatedGamepadIndex) {
+      if (!this.isActiveEmulatedGamepad(gpadIndex, gpad)) {
         return;
       }
 
@@ -144,6 +155,26 @@ export class GamepadController {
 
       this.sendDeltaState({}, axDelta);
     });
+  }
+
+  refreshActiveEmulatedGamepadIndex() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const emulatedGamepad = Array.from(gamepads).find(
+      (gpad) => gpad && gpad.emulation === gamepadEmulationState.emulated,
+    );
+    this.activeEmulatedGamepadIndex = emulatedGamepad ? emulatedGamepad.index : null;
+  }
+
+  isActiveEmulatedGamepad(gpadIndex, gpad) {
+    if (!gpad || gpad.emulation !== gamepadEmulationState.emulated) {
+      return false;
+    }
+
+    if (this.activeEmulatedGamepadIndex !== gpadIndex) {
+      this.refreshActiveEmulatedGamepadIndex();
+    }
+
+    return this.activeEmulatedGamepadIndex === gpadIndex;
   }
 
   startFullStateLoop() {
