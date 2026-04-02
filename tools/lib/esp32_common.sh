@@ -11,8 +11,33 @@ VENV_DIR="${ROOT_DIR}/.venv"
 PLATFORMIO_CORE_DIR="${ROOT_DIR}/.platformio"
 DEFAULT_BOARD="s3"
 DEFAULT_HOST_MODE="ble"
+LOCAL_CONTROLLER_ENV_FILE="${ROOT_DIR}/tools/local.env"
 # shellcheck disable=SC1091
 source "${ROOT_DIR}/tools/lib/device_identity.sh"
+
+load_local_controller_env() {
+  if [[ -f "${LOCAL_CONTROLLER_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${LOCAL_CONTROLLER_ENV_FILE}"
+    set +a
+  fi
+}
+
+load_local_controller_env
+
+set_sta_seed_credentials() {
+  local ssid="${1:-}"
+  local pass="${2:-}"
+
+  if [[ -n "${ssid}" ]]; then
+    export CONTROLLER_DEFAULT_STA_SSID="${ssid}"
+  fi
+
+  if [[ -n "${pass}" ]]; then
+    export CONTROLLER_DEFAULT_STA_PASS="${pass}"
+  fi
+}
 
 canonical_board_name() {
   local requested="${1:-${CONTROLLER_BOARD:-${BOARD:-${PIO_BOARD:-${DEFAULT_BOARD}}}}}"

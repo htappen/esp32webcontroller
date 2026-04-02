@@ -24,4 +24,5 @@ firmware/src/generated/
 coverage/
 
 # Local test secrets
+tools/local.env
 tools/pi/local.env

@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+class Preferences;
+
 struct DeviceStaSettings {
   bool has_credentials = false;
   char ssid[33] = {0};
@@ -24,6 +26,7 @@ class DeviceSettingsStore {
   bool saveRuntimeSettings(const DeviceRuntimeSettings& settings);
 
  private:
+  bool seedDefaultStaSettings(Preferences* prefs) const;
   static constexpr const char* kNamespace = "controller";
   static constexpr const char* kSchemaVersionKey = "schema";
   static constexpr const char* kStaSsidKey = "sta_ssid";

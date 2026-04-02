@@ -22,7 +22,8 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 ## Integration Checks
 
 - Set `CONTROLLER_BOARD=s3` or `CONTROLLER_BOARD=wroom` to choose the default build, flash, and test target in your shell.
-- `./tools/build_firmware.sh [--board s3|wroom]` builds the selected PlatformIO target.
-- `./tools/upload_firmware.sh [--board s3|wroom] [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state.
+- Optional local plaintext config can live in `tools/local.env` and is ignored by git. Copy `tools/local.env.example` and set `CONTROLLER_DEFAULT_STA_SSID` / `CONTROLLER_DEFAULT_STA_PASS` to seed saved STA credentials on first boot after a flash/erase.
+- `./tools/build_firmware.sh [--board s3|wroom] [--sta-ssid SSID] [--sta-pass PASS]` builds the selected PlatformIO target.
+- `./tools/upload_firmware.sh [--board s3|wroom] [--sta-ssid SSID] [--sta-pass PASS] [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state.
 - `./tools/capture_boot_log.sh [port] [seconds]` toggles reset over serial control lines and captures the boot log.
-- `./tools/hardware_integration_test.sh [--board s3|wroom] [port]` rebuilds, flashes, captures boot logs, and fails if the boot banner is missing or BLE advertising starts before NimBLE host sync.
+- `./tools/hardware_integration_test.sh [--board s3|wroom] [--sta-ssid SSID] [--sta-pass PASS] [port]` rebuilds, flashes, captures boot logs, and fails if the boot banner is missing or BLE advertising starts before NimBLE host sync.

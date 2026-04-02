@@ -10,6 +10,8 @@ BOARD_OVERRIDE=""
 ERASE_FLASH_FIRST="${ERASE_FLASH_FIRST:-0}"
 BOOT_LOG_DURATION_SECONDS="${BOOT_LOG_DURATION_SECONDS:-}"
 DEVICE_UUID="${CONTROLLER_DEVICE_UUID:-${DEFAULT_TEST_DEVICE_UUID}}"
+STA_SSID_OVERRIDE=""
+STA_PASS_OVERRIDE=""
 LOG_FILE="$(mktemp)"
 cleanup() {
   rm -f "${LOG_FILE}"
@@ -35,6 +37,14 @@ while [[ $# -gt 0 ]]; do
       DEVICE_UUID="${2:-}"
       shift 2
       ;;
+    --sta-ssid)
+      STA_SSID_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --sta-pass)
+      STA_PASS_OVERRIDE="${2:-}"
+      shift 2
+      ;;
     *)
       if [[ -z "${PORT}" ]]; then
         PORT="$1"
@@ -54,6 +64,7 @@ fi
 activate_platformio_env
 BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
 ENV_NAME="${PIO_ENV:-$(resolve_pio_env "${BOARD_NAME}")}"
+set_sta_seed_credentials "${STA_SSID_OVERRIDE}" "${STA_PASS_OVERRIDE}"
 prepare_controller_identity "test" "${DEVICE_UUID}"
 
 if [[ -z "${BOOT_LOG_DURATION_SECONDS}" ]]; then
@@ -72,13 +83,17 @@ fi
 log "building firmware for ${BOARD_NAME} via ${ENV_NAME}"
 log "using device uuid ${CONTROLLER_DEVICE_UUID}"
 log "expecting device name ${CONTROLLER_DEVICE_FRIENDLY_NAME}"
+if [[ -n "${CONTROLLER_DEFAULT_STA_SSID:-}" ]]; then
+  log "default saved STA ssid ${CONTROLLER_DEFAULT_STA_SSID}"
+fi
 (
   cd "${FIRMWARE_DIR}"
   pio run -e "${ENV_NAME}"
 )
 
 log "uploading filesystem and firmware to ${PORT}"
-"${ROOT_DIR}/tools/upload_firmware.sh" --board "${BOARD_NAME}" --device-uuid "${CONTROLLER_DEVICE_UUID}" "${PORT}"
+"${ROOT_DIR}/tools/upload_firmware.sh" --board "${BOARD_NAME}" --device-uuid "${CONTROLLER_DEVICE_UUID}" \
+  --sta-ssid "${CONTROLLER_DEFAULT_STA_SSID:-}" --sta-pass "${CONTROLLER_DEFAULT_STA_PASS:-}" "${PORT}"
 
 log "capturing boot log from ${PORT}"
 "${ROOT_DIR}/tools/capture_boot_log.sh" "${PORT}" "${BOOT_LOG_DURATION_SECONDS}" | tee "${LOG_FILE}"

@@ -131,6 +131,12 @@ device_identity_header_path() {
 
 write_device_identity_header() {
   local header_path="${1:-$(device_identity_header_path)}"
+  local default_sta_ssid="${CONTROLLER_DEFAULT_STA_SSID:-}"
+  local default_sta_pass="${CONTROLLER_DEFAULT_STA_PASS:-}"
+  default_sta_ssid="${default_sta_ssid//\\/\\\\}"
+  default_sta_ssid="${default_sta_ssid//\"/\\\"}"
+  default_sta_pass="${default_sta_pass//\\/\\\\}"
+  default_sta_pass="${default_sta_pass//\"/\\\"}"
   mkdir -p "$(dirname "${header_path}")"
   cat > "${header_path}" <<EOF
 #pragma once
@@ -142,6 +148,8 @@ write_device_identity_header() {
 #define CONTROLLER_MDNS_INSTANCE_NAME "${CONTROLLER_DEVICE_MDNS_INSTANCE_NAME}"
 #define CONTROLLER_FRIENDLY_NAME "${CONTROLLER_DEVICE_FRIENDLY_NAME}"
 #define CONTROLLER_LOCAL_URL "${CONTROLLER_DEVICE_LOCAL_URL}"
+#define CONTROLLER_DEFAULT_STA_SSID "${default_sta_ssid}"
+#define CONTROLLER_DEFAULT_STA_PASS "${default_sta_pass}"
 EOF
 }
 

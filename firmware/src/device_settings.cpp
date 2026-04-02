@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <string.h>
 
+#include "config.h"
+
 namespace {
 void copy_safe(char* dst, size_t dst_size, const char* src) {
   if (dst == nullptr || dst_size == 0) {
@@ -28,9 +30,22 @@ bool DeviceSettingsStore::begin() {
     prefs.clear();
     prefs.putUInt(kSchemaVersionKey, kSchemaVersion);
   }
+  seedDefaultStaSettings(&prefs);
   prefs.end();
   ready_ = true;
   return true;
+}
+
+bool DeviceSettingsStore::seedDefaultStaSettings(Preferences* prefs) const {
+  if (prefs == nullptr || prefs->isKey(kStaSsidKey)) {
+    return false;
+  }
+  if (strlen(config::kDefaultStaSsid) == 0) {
+    return false;
+  }
+
+  return prefs->putString(kStaSsidKey, config::kDefaultStaSsid) > 0 &&
+         prefs->putString(kStaPassKey, config::kDefaultStaPass) >= 0;
 }
 
 DeviceStaSettings DeviceSettingsStore::loadStaSettings() const {

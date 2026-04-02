@@ -37,10 +37,18 @@ namespace config {
 #ifndef CONTROLLER_LOCAL_URL
 #define CONTROLLER_LOCAL_URL "http://game.local"
 #endif
+#ifndef CONTROLLER_DEFAULT_STA_SSID
+#define CONTROLLER_DEFAULT_STA_SSID ""
+#endif
+#ifndef CONTROLLER_DEFAULT_STA_PASS
+#define CONTROLLER_DEFAULT_STA_PASS ""
+#endif
 
 static constexpr char kApSsid[] = CONTROLLER_AP_SSID;
 static constexpr char kApPass[] = "";
 static constexpr char kApHostname[] = CONTROLLER_HOSTNAME;
+static constexpr char kDefaultStaSsid[] = CONTROLLER_DEFAULT_STA_SSID;
+static constexpr char kDefaultStaPass[] = CONTROLLER_DEFAULT_STA_PASS;
 static constexpr NetworkMode kDefaultNetworkMode = NetworkMode::kApSta;
 static constexpr uint16_t kHttpPort = 80;
 static constexpr uint16_t kWsPort = 81;

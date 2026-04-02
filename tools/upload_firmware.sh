@@ -9,6 +9,8 @@ UPLOAD_PORT=""
 BOARD_OVERRIDE=""
 HOST_MODE_OVERRIDE=""
 DEVICE_UUID=""
+STA_SSID_OVERRIDE=""
+STA_PASS_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,6 +20,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --device-uuid)
       DEVICE_UUID="${2:-}"
+      shift 2
+      ;;
+    --sta-ssid)
+      STA_SSID_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --sta-pass)
+      STA_PASS_OVERRIDE="${2:-}"
       shift 2
       ;;
     --host-mode)
@@ -53,6 +63,7 @@ activate_platformio_env
 BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
 HOST_MODE="$(canonical_host_mode "${HOST_MODE_OVERRIDE}")"
 ENV_NAME="$(resolve_pio_env "${BOARD_NAME}" "${HOST_MODE}")"
+set_sta_seed_credentials "${STA_SSID_OVERRIDE}" "${STA_PASS_OVERRIDE}"
 prepare_controller_identity "build" "${DEVICE_UUID}"
 
 log "using PlatformIO core dir: ${PLATFORMIO_CORE_DIR}"
@@ -60,6 +71,9 @@ log "using board target: ${BOARD_NAME} (${HOST_MODE}; ${ENV_NAME})"
 log "using device uuid: ${CONTROLLER_DEVICE_UUID}"
 log "using device name: ${CONTROLLER_DEVICE_FRIENDLY_NAME}"
 log "using device url: ${CONTROLLER_DEVICE_LOCAL_URL}"
+if [[ -n "${CONTROLLER_DEFAULT_STA_SSID:-}" ]]; then
+  log "default saved STA ssid: ${CONTROLLER_DEFAULT_STA_SSID}"
+fi
 UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
