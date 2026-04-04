@@ -17,6 +17,7 @@ require_cmd python3
 require_cmd nmcli
 require_cmd bluetoothctl
 require_cmd curl
+require_cmd lsusb
 require_cmd sudo
 
 if ! python3 -m venv -h >/dev/null 2>&1; then

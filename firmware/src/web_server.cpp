@@ -218,7 +218,6 @@ void WebServerBridge::loop() {
   g_http.handleClient();
   g_ws.loop();
   network_->loop();
-  host_->loop();
   syncMdns(network_->status());
 
   if (ws_client_connected_ && ws_last_packet_ms_ > 0) {

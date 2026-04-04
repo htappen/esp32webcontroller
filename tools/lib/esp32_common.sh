@@ -69,10 +69,17 @@ board_to_pio_env() {
     s3:usb_switch|s3:usb-switch|s3:switch)
       printf 'esp32_s3_devkitc_1_usb_switch\n'
       ;;
+    s3:usb_xinput|s3:usb-xinput|s3:xinput)
+      printf 'esp32_s3_devkitc_1_usb_xinput\n'
+      ;;
     wroom:ble)
       printf 'esp32_wroom_32d\n'
       ;;
     wroom:usb_switch|wroom:usb-switch|wroom:switch)
+      printf '[esp32] board "%s" does not support native USB host mode\n' "${board}" >&2
+      return 1
+      ;;
+    wroom:usb_xinput|wroom:usb-xinput|wroom:xinput)
       printf '[esp32] board "%s" does not support native USB host mode\n' "${board}" >&2
       return 1
       ;;
@@ -94,8 +101,11 @@ canonical_host_mode() {
     usb_switch|usb-switch|switch)
       printf 'usb_switch\n'
       ;;
+    usb_xinput|usb-xinput|xinput)
+      printf 'usb_xinput\n'
+      ;;
     *)
-      printf '[esp32] unsupported host mode "%s"; use "ble" or "usb_switch"\n' "${requested}" >&2
+      printf '[esp32] unsupported host mode "%s"; use "ble", "usb_switch", or "usb_xinput"\n' "${requested}" >&2
       return 1
       ;;
   esac

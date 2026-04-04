@@ -3,8 +3,13 @@
 ## Current State
 
 - The tracked plan is up to date through the UUID-derived device identity work and the BLE host-forget flow.
-- The main unresolved functional gap is still ESP32-S3 BLE pairing/runtime behavior on the Raspberry Pi end-to-end path.
-- The current worktree has no first-party source edits pending; only local changes under `third_party/` and `.codex/` are present.
+- The main active work is now the ESP32-S3 `usb_xinput` path for Windows-style wired host mode, including Pi-side flashing and Linux host validation.
+- The current worktree includes first-party source edits for `usb_xinput`, Pi-side remote flashing, and USB/XInput test orchestration.
+- The transport-separation refactor is partially landed: the mapper emits a transport-neutral `HostInputReport`, the firmware exposes a `HostTransport` abstraction, and status/UI now distinguish Bluetooth vs `USB-PC`/`USB-Switch`.
+- The Pi-side remote runner now stages the live worktree correctly, can bootstrap a minimal PlatformIO environment without Node.js, and can reuse prebuilt `firmware/data` assets during remote S3 builds.
+- The `usb_xinput` work is now blocked on implementation strategy, not just descriptor tuning. A comparison against `gp2040-ce` found that their working Xbox 360 mode is built as a custom TinyUSB class driver that owns descriptor callbacks, endpoint pairing, and transfer/control handling directly.
+- The current Arduino-ESP32 `USB_INTERFACE_VENDOR` approach in `firmware/src/usb_xinput_gamepad.cpp` can make the descriptor blob look closer to a 360 controller, but it still does not provide the same runtime model as a true XInput class driver.
+- The latest Pi-side validation still showed the attached S3 resetting into ROM download mode and enumerating only as `303a:1001` (`Espressif USB JTAG/serial debug unit`) after manual reset, so there is still a separate physical reset/path issue to keep in mind during future USB work.
 
 ## Current Next Steps
 
@@ -61,23 +66,32 @@
    - Added the `/api/host/forget` API and UI action to drop the current BLE host bond so another device can pair.
    - Pi-side E2E scripts now assert the resolved identity consistently across direct-IP, mDNS, and autodiscovery flows.
 
-10. [NEXT] Get ESP32-S3 BLE pairing/runtime behavior working end to end.
+10. [NEXT] Validate `usb_xinput` end to end from the Raspberry Pi host path.
+   - Do not spend more time iterating only on the current descriptor blob under Arduino's generic vendor interface path.
+   - Port the `gp2040-ce` Xbox 360 device model toward ESP32-S3 as a true TinyUSB custom class-driver path: own the device/config/string descriptor callbacks, parse the reserved XInput subdescriptors in `open`, open the interrupt endpoint pair directly, and handle IN/OUT transfers without routing through `tud_vendor_n_*`.
+   - Reuse the upstream raw descriptor tables, report struct/layout, string-descriptor helper pattern, and class-driver skeleton where practical, but adapt them to this repo's transport abstraction and ESP32-S3/TinyUSB integration model.
+   - Treat the `gp2040-ce` auth/control path as a reference, not a drop-in dependency. Port only the minimum control-transfer behavior needed for Linux/XInput host acceptance first, then decide whether fuller auth handling is required.
+   - After the custom class-driver port exists, re-run Pi-side host validation and only then revisit descriptor-level mismatches if Linux still rejects `SET_CONFIGURATION`.
+   - Keep the separate physical-path sanity check in place during re-test: ensure the S3 OTG/device USB path is connected to the host and that the board is reset into normal firmware mode rather than ROM download mode before interpreting host results.
+
+11. [NEXT] Get ESP32-S3 BLE pairing/runtime behavior working end to end.
    - Reproduce and root-cause the current Pi-side failure: `org.bluez.Error.ConnectionAttemptFailed: Page Timeout` while pairing to `ESP32 Web Gamepad` on S3.
    - Compare NimBLE/`ESP32-BLE-Gamepad` behavior between WROOM and S3, including advertising/connectability state, address type, and any target-specific init ordering.
    - Add targeted S3-only instrumentation in firmware if needed so the failure can be diagnosed without guessing.
    - Re-run `tools/pi/run_remote_e2e.sh` against the attached S3 until BLE pairing, input event capture, and timeout-to-neutral pass again.
 
-11. [NEXT] Add USB host-connected controller mode for supported ESP32 boards.
-   - Follow the transport-separation plan in `usb-refactor.md`: keep the web/state path shared, introduce a transport-neutral host report, and isolate BLE vs USB behavior behind a `HostTransport` interface.
+12. [NEXT] Add USB host-connected controller mode for supported ESP32 boards.
+   - [DONE] Keep the web/state path shared, introduce a transport-neutral host report, and isolate BLE vs USB behavior behind a `HostTransport` interface.
    - Treat `ESP32-S3` as the primary USB implementation target and keep classic `ESP32-WROOM-32D` on the BLE-only path unless external USB hardware is added.
+   - For `USB-PC`/`usb_xinput`, prefer a dedicated custom TinyUSB class-driver backend modeled on `gp2040-ce` rather than extending Arduino's generic vendor helper.
    - Start with `USB-Switch` on S3, then decide whether `USB-PC` should be a second transport variant or share the same USB backend with different descriptors.
    - Keep the end-to-end testing model aligned with the refactor plan: shared scenario logic, transport-specific host probes, and USB validation with the ESP32 attached to the developer workstation while the Pi still drives the web path.
 
-12. [NEXT] Expand automated regression coverage beyond startup smoke tests.
+13. [NEXT] Expand automated regression coverage beyond startup smoke tests.
    - Extend `test/host` coverage for mapper/protocol edge cases.
    - Add scripted checks for status endpoints and controller timeout behavior where feasible.
 
-13. Create new SVGs of different controller layouts.
+14. Create new SVGs of different controller layouts.
    - Nintendo 64
    - Playstation
    - Xbox

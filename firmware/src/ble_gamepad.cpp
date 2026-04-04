@@ -170,7 +170,7 @@ bool BleGamepadBridge::send(const HostInputReport& report) {
 HostStatus BleGamepadBridge::status() const {
   HostStatus status;
   status.transport = "ble";
-  status.variant = "xbox-one-s";
+  status.variant = "default";
   status.display_name = config::kBleDeviceName;
   status.ready = started_;
   status.connected = connected();

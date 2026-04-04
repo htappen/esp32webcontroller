@@ -1,21 +1,28 @@
 #include "host_connection.h"
 
 #include "ble_gamepad.h"
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_XINPUT)
+#include "usb_xinput_gamepad.h"
+#endif
 #if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
 #include "usb_switch_gamepad.h"
 #endif
 
 namespace {
-#if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
-UsbSwitchGamepadBridge g_usb_transport;
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_XINPUT)
+UsbXInputGamepadBridge g_usb_xinput_transport;
+#elif defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
+UsbSwitchGamepadBridge g_usb_switch_transport;
 #else
 BleGamepadBridge g_ble_transport;
 #endif
 }  // namespace
 
 HostConnectionManager::HostConnectionManager(DeviceSettingsStore* settings) : settings_(settings) {
-#if defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
-  transport_ = &g_usb_transport;
+#if defined(CONTROLLER_HOST_TRANSPORT_USB_XINPUT)
+  transport_ = &g_usb_xinput_transport;
+#elif defined(CONTROLLER_HOST_TRANSPORT_USB_SWITCH)
+  transport_ = &g_usb_switch_transport;
 #else
   transport_ = &g_ble_transport;
 #endif

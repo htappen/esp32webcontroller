@@ -10,6 +10,7 @@ The web control surface should stay mostly shared across BLE and USB modes. The 
 
 - `ESP32-S3` is the primary USB target because it has native USB device support.
 - Classic `ESP32-WROOM-32D` does not have native USB device support, so wired USB host mode is not a first-class implementation target there.
+- For Xbox 360 / `usb_xinput`, descriptor-only emulation through Arduino-ESP32's generic vendor helper is not a sufficient foundation. A `gp2040-ce` comparison showed that the working approach uses a real TinyUSB custom class driver that owns descriptor callbacks, endpoint opening, and transfer/control behavior directly.
 - Raspberry Pi end-to-end testing should remain part of the workflow, but USB mode changes the physical topology:
   - the ESP32 board stays attached to the developer workstation over USB
   - the Pi still drives the controller over Wi-Fi/web APIs
@@ -82,6 +83,13 @@ Instead, create separate implementations:
 - `UsbPcHostTransport`
 - `UsbSwitchHostTransport`
 
+For `UsbPcHostTransport` specifically:
+
+- prefer a custom TinyUSB class-driver path over Arduino's generic `USB_INTERFACE_VENDOR` path
+- own `tud_descriptor_*` callbacks for the XInput personality
+- own interface parsing, endpoint pairing, and interrupt transfer flow directly
+- treat `gp2040-ce`'s XInput driver as the reference design for structure, not a drop-in copy
+
 Each transport owns:
 
 - bring-up and teardown
@@ -123,6 +131,7 @@ These pieces should become transport-specific:
 - BLE bond forgetting
 - USB enumeration handling
 - USB descriptor identity
+- TinyUSB class-driver integration for XInput-class USB personalities
 - Switch-vs-PC USB personality
 - transport-specific readiness and connection checks
 
@@ -175,6 +184,8 @@ This keeps:
 - preprocessor use localized to transport selection and board support
 
 Separate PlatformIO environments are preferable to broad compile-time branching throughout the codebase.
+
+For `usb_xinput`, prefer a dedicated build/backend combination that can opt into lower-level TinyUSB ownership where needed, instead of trying to share the exact same Arduino USB helper path as simpler vendor or HID-style transports.
 
 ## Testing Strategy
 
@@ -230,11 +241,13 @@ This means the USB E2E test becomes a two-host flow, but the high-level scenario
 4. Extend `/api/status` with explicit transport and variant fields.
 5. Update the web UI to show transport mode and hide BLE-only controls in USB mode.
 6. Add `UsbSwitchHostTransport` on `ESP32-S3`.
-7. Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact.
+7. For `UsbPcHostTransport` / `usb_xinput`, port the `gp2040-ce`-style custom TinyUSB class-driver skeleton before spending more time on descriptor-only tuning.
+8. Reuse the upstream raw descriptor tables, report struct/layout, string-descriptor helper, and endpoint-open logic where practical, but adapt them to this repo's transport layer and ESP32-S3 runtime.
+9. Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact.
 
 ## Initial Recommendation
 
-Start with `ESP32-S3` and `USB-Switch` mode only.
+Start with `ESP32-S3` and `USB-Switch` mode only for the first broadly supported USB transport.
 
 Reasons:
 
@@ -244,3 +257,5 @@ Reasons:
 - it allows the PC/macOS path to follow later as either:
   - a PC-oriented HID mode, or
   - a second USB transport variant if Switch emulation is not ideal for general desktop compatibility
+
+If `usb_xinput` remains a goal, treat it as a separate low-level implementation track with a custom TinyUSB class driver, not as a small descriptor variant of the existing Arduino vendor backend.

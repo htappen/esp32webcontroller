@@ -75,11 +75,6 @@ if [[ -z "${BOOT_LOG_DURATION_SECONDS}" ]]; then
   fi
 fi
 
-if [[ "${ERASE_FLASH_FIRST}" == "1" ]]; then
-  log "erasing ${BOARD_NAME} flash on ${PORT} before upload"
-  "${ROOT_DIR}/tools/erase_flash.sh" --board "${BOARD_NAME}" "${PORT}"
-fi
-
 log "building firmware for ${BOARD_NAME} via ${ENV_NAME}"
 log "using device uuid ${CONTROLLER_DEVICE_UUID}"
 log "expecting device name ${CONTROLLER_DEVICE_FRIENDLY_NAME}"
@@ -90,6 +85,11 @@ fi
   cd "${FIRMWARE_DIR}"
   pio run -e "${ENV_NAME}"
 )
+
+if [[ "${ERASE_FLASH_FIRST}" == "1" ]]; then
+  log "erasing ${BOARD_NAME} flash on ${PORT} before upload"
+  "${ROOT_DIR}/tools/erase_flash.sh" --board "${BOARD_NAME}" "${PORT}"
+fi
 
 log "uploading filesystem and firmware to ${PORT}"
 "${ROOT_DIR}/tools/upload_firmware.sh" --board "${BOARD_NAME}" --device-uuid "${CONTROLLER_DEVICE_UUID}" \

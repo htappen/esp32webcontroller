@@ -47,12 +47,12 @@ function formatHostStatus(host, controller) {
   const browserState = controller.wsConnected ? 'live' : 'idle';
 
   if (transport === 'usb') {
-    const modeLabel = variant === 'switch' ? 'USB-Switch' : 'USB';
+    const modeLabel = variant === 'switch' ? 'USB-Switch' : variant === 'pc' ? 'USB-PC' : 'USB';
     const connection = host.connected ? 'connected' : (host.ready ? 'ready' : 'starting');
     return `${host.displayName || modeLabel} ${connection}  Host mode ${modeLabel}  Browser ${browserState}`;
   }
 
-  return `${host.displayName || host.bleName || 'BLE host'} ${host.connected ? 'connected' : 'ready'}  BLE advertising ${host.advertising ? 'on' : 'off'}  Browser ${browserState}`;
+  return `${host.displayName || host.bleName || 'Bluetooth host'} ${host.connected ? 'connected' : 'ready'}  Bluetooth advertising ${host.advertising ? 'on' : 'off'}  Browser ${browserState}`;
 }
 
 export class PageStateController {
@@ -154,6 +154,12 @@ export class PageStateController {
 
     this.networkStatusEl.textContent = formatNetworkStatus(net);
     this.hostStatusEl.textContent = formatHostStatus(host, controller);
+    if (this.transportStatusEl) {
+      const transportLabel = host.transport === 'usb'
+        ? (host.variant === 'switch' ? 'USB-Switch' : host.variant === 'pc' ? 'USB-PC' : 'USB')
+        : 'Bluetooth';
+      this.transportStatusEl.textContent = `Host transport: ${transportLabel}`;
+    }
 
     const pairingSupported = !!host.supportsPairing;
     this.forgetHostEl.hidden = !pairingSupported;
@@ -175,6 +181,9 @@ export class PageStateController {
     } catch (err) {
       this.networkStatusEl.textContent = `Network status error: ${err.message}`;
       this.hostStatusEl.textContent = `Host status error: ${err.message}`;
+      if (this.transportStatusEl) {
+        this.transportStatusEl.textContent = `Host transport error: ${err.message}`;
+      }
     }
   }
 

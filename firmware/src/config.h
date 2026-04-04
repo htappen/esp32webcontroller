@@ -60,6 +60,7 @@ static constexpr uint32_t kStaCandidateStartDelayMs = 750;
 static constexpr uint32_t kReportIntervalMs = 16;
 static constexpr char kBleDeviceName[] = CONTROLLER_BLE_NAME;
 static constexpr char kUsbSwitchProductName[] = CONTROLLER_FRIENDLY_NAME " Pad";
+static constexpr char kUsbXInputProductName[] = CONTROLLER_FRIENDLY_NAME " XInput";
 static constexpr char kMdnsInstanceName[] = CONTROLLER_MDNS_INSTANCE_NAME;
 static constexpr char kFriendlyName[] = CONTROLLER_FRIENDLY_NAME;
 static constexpr char kDeviceUuid[] = CONTROLLER_DEVICE_UUID;

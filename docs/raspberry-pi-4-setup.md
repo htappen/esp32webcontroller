@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide prepares a Raspberry Pi 4 to act as the automated BLE host and browser/input runner for ESP32 end-to-end tests.
+This guide prepares a Raspberry Pi 4 to act as the automated flasher, host observer, and browser/input runner for ESP32 end-to-end tests.
 
 ## Recommended OS
 
@@ -19,7 +19,7 @@ For the full route planned in this repository, the desktop image is the safer de
 - Ethernet connection for SSH/control from ChromeOS
 - onboard Wi-Fi enabled
 - onboard Bluetooth enabled
-- flashed ESP32 controller board powered over USB
+- ESP32 controller board connected to the Pi over USB for flashing and boot-log capture
 
 ## Naming And Access Conventions
 
@@ -151,6 +151,8 @@ git submodule update --init --recursive
 
 The Pi and ChromeOS machine should use the same repository branch when debugging cross-machine test failures.
 
+The top-level `./tools/pi/run_remote_e2e.sh` script stages the current tracked repo snapshot from ChromeOS to the Pi before a test run, so the Pi does not need a perfectly up-to-date manual clone for every firmware change. It still needs the one-time dependency setup from `./tools/setup_env.sh`.
+
 ## Step 8: Verify ChromeOS To Pi SSH Settings
 
 These settings must align:
@@ -199,6 +201,8 @@ Once the ESP32 is powered:
 3. Use `bluetoothctl scan on` and look for the matching BLE name, for example `Sunny Maple Pad`.
 
 This confirms the Pi can act as both test browser host and BLE receiver.
+
+If the ESP32 is connected to the Pi over USB, the same box can now also build and flash it during `./tools/pi/run_remote_e2e.sh`.
 
 ## Operational Recommendations
 
