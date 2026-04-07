@@ -87,8 +87,21 @@ For `UsbPcHostTransport` specifically:
 
 - prefer a custom TinyUSB class-driver path over Arduino's generic `USB_INTERFACE_VENDOR` path
 - own `tud_descriptor_*` callbacks for the XInput personality
-- own interface parsing, endpoint pairing, and interrupt transfer flow directly
+- own interface parsing, endpoint opening, and interrupt transfer flow directly
 - treat `gp2040-ce`'s XInput driver as the reference design for structure, not a drop-in copy
+
+Current status:
+
+- this repo now has an initial custom TinyUSB app-driver backend for `usb_xinput`
+- it registers through `usbd_app_driver_get_cb()`
+- it owns the XInput interface `open()` path, opens endpoints directly with TinyUSB, primes OUT transfers, and sends IN reports with `usbd_edpt_xfer()`
+- it handles the minimum vendor control requests needed for initial Linux/XInput host acceptance attempts
+- it is not yet validated end to end against a Linux host, so descriptor/control quirks may still need iteration after real host testing
+- Pi-side flashing no longer requires a manual reset-button press after upload; the tooling now uses `esptool --after watchdog_reset` for `ESP32-S3`
+- a diagnostic `CONTROLLER_USB_XINPUT_DEFER_BEGIN=1` mode now exists so `usb_xinput` can boot without calling `USB.begin()` and stay on the Espressif `USB-Serial/JTAG` path while the built-in JTAG debugger is attached
+- the temporary serial/ROM breadcrumb instrumentation used during early narrowing has been removed; the active debug path is now Pi-side OpenOCD + `xtensa-esp32s3-elf-gdb` against the S3 built-in JTAG interface
+- Pi environment bootstrap now installs debugger prerequisites (`openocd`, `gdb`) and validates the built-in JTAG board config so debugger attach can be part of the normal Pi workflow
+- debugger attach on the Pi is now proven on the real board; the non-deferred `usb_xinput` image still drops off USB/JTAG as soon as execution resumes, while the deferred image stays attached long enough for repeatable post-boot inspection
 
 Each transport owns:
 
@@ -185,7 +198,7 @@ This keeps:
 
 Separate PlatformIO environments are preferable to broad compile-time branching throughout the codebase.
 
-For `usb_xinput`, prefer a dedicated build/backend combination that can opt into lower-level TinyUSB ownership where needed, instead of trying to share the exact same Arduino USB helper path as simpler vendor or HID-style transports.
+For `usb_xinput`, prefer a dedicated build/backend combination that can opt into lower-level TinyUSB ownership where needed, instead of trying to share the exact same Arduino USB helper path as simpler vendor or HID-style transports. That is now the implemented direction in this repo.
 
 ## Testing Strategy
 
@@ -241,9 +254,23 @@ This means the USB E2E test becomes a two-host flow, but the high-level scenario
 4. Extend `/api/status` with explicit transport and variant fields.
 5. Update the web UI to show transport mode and hide BLE-only controls in USB mode.
 6. Add `UsbSwitchHostTransport` on `ESP32-S3`.
-7. For `UsbPcHostTransport` / `usb_xinput`, port the `gp2040-ce`-style custom TinyUSB class-driver skeleton before spending more time on descriptor-only tuning.
-8. Reuse the upstream raw descriptor tables, report struct/layout, string-descriptor helper, and endpoint-open logic where practical, but adapt them to this repo's transport layer and ESP32-S3 runtime.
-9. Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact.
+7. [DONE] For `UsbPcHostTransport` / `usb_xinput`, port the first `gp2040-ce`-style custom TinyUSB class-driver skeleton instead of continuing on descriptor-only tuning.
+8. [IN PROGRESS] Reuse the upstream raw descriptor tables, report struct/layout, string-descriptor helper, and endpoint-open/control behavior where practical, but adapt them to this repo's transport layer and ESP32-S3 runtime.
+9. [IN PROGRESS] Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact; the runner exists, but the new custom driver still needs real host validation.
+10. [DONE] Use temporary deferred-mode breadcrumbs only long enough to confirm that the app reaches startup far enough to justify switching from print debugging to JTAG debugging, then remove the temporary prints.
+11. [IN PROGRESS] Switch the active workflow to Pi-side OpenOCD + GDB on the ESP32-S3 built-in JTAG path.
+
+Current result:
+
+- Pi bootstrap now prepares OpenOCD/GDB prerequisites
+- the repo contains Pi-side debugger launch helpers and a startup breakpoint script
+- clean non-deferred `usb_xinput` reflashing still succeeds with software reboot
+- the practical blocker on the normal image is still timing: after reboot the board can fall from `303a:1001` into repeated USB descriptor failures quickly enough that OpenOCD must attach during that window
+- the deferred image removes that instability and can be inspected after boot; a fresh GDB attach lands in the idle task (`esp_pm_impl_waiti` / `prvIdleTask`), which means the board is alive enough for breakpoint refinement rather than more USB-presence triage
+- refined deferred-build stepping now proves the generic startup path is healthy on hardware: Arduino `app_main` reaches `loopTask`, then project `setup()`, then `Serial.begin`, `delay`, `g_state.reset()`, `NetworkManager::begin()`, `HostConnectionManager::begin()`, `WebServerBridge::begin()`, and the later setup-side `Serial.printf(...)` calls
+- that shifts the remaining suspicion away from early generic startup and onto the non-deferred/native-USB transport path itself
+- with a temporary 10-second pre-`USB.begin()` hold and a retrying OpenOCD attach path, the normal image can now be caught over built-in JTAG too, but only at a much lower-level boundary: the earliest stable stop is `PC=0x40000400`, and resuming from there immediately drops the board off the JTAG device again
+- that means the non-deferred failure is now narrowed below the ordinary Arduino startup chain and likely sits in a lower-level reset/runtime handoff associated with native USB bring-up rather than in `setup()`-level application code
 
 ## Initial Recommendation
 
@@ -258,4 +285,4 @@ Reasons:
   - a PC-oriented HID mode, or
   - a second USB transport variant if Switch emulation is not ideal for general desktop compatibility
 
-If `usb_xinput` remains a goal, treat it as a separate low-level implementation track with a custom TinyUSB class driver, not as a small descriptor variant of the existing Arduino vendor backend.
+`usb_xinput` is now a separate low-level implementation track with a custom TinyUSB class driver, not a small descriptor variant of the old Arduino vendor backend.

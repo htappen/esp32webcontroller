@@ -74,6 +74,9 @@ log "using device url: ${CONTROLLER_DEVICE_LOCAL_URL}"
 if [[ -n "${CONTROLLER_DEFAULT_STA_SSID:-}" ]]; then
   log "default saved STA ssid: ${CONTROLLER_DEFAULT_STA_SSID}"
 fi
+if [[ "${CONTROLLER_USB_XINPUT_DEFER_BEGIN:-0}" == "1" ]]; then
+  log "deferring USB.begin() for usb_xinput diagnostics"
+fi
 UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
@@ -96,6 +99,13 @@ log "uploading firmware image"
   cd "${FIRMWARE_DIR}"
   pio_run -e "${ENV_NAME}" -t upload
 )
+
+if [[ "${BOARD_NAME}" == "s3" ]]; then
+  log "requesting post-upload watchdog reset"
+  if ! CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/reboot_board.sh" "${UPLOAD_PORT}"; then
+    log "post-upload watchdog reset failed; manual EN/RESET may still be required"
+  fi
+fi
 
 log "upload complete"
 log "if auto-reset does not start flashing, hold BOOT, tap EN/RESET, then retry"

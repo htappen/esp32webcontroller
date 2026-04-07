@@ -17,6 +17,7 @@ The test should be runnable remotely from the ChromeOS development machine over 
 - The Pi can expose Linux input events locally for assertions.
 - The Pi can be driven remotely over SSH, which fits the ChromeOS workflow.
 - This avoids Crostini-specific uncertainty around Bluetooth and device passthrough.
+- For `usb_xinput`, the Pi can also act as the Linux USB host observer once the ESP32-S3 OTG/device path is physically connected and the custom TinyUSB XInput driver is flashed.
 
 ## Recommended Test Architecture
 
@@ -32,6 +33,13 @@ The test should be runnable remotely from the ChromeOS development machine over 
 - Pi opens the controller web UI at the UUID-derived hostname, for example `http://sunny-maple.local`.
 - Pi pairs to the BLE device using the same UUID-derived name, for example `Sunny Maple Pad`.
 - Pi injects UI input and records Linux input events from the BLE gamepad device.
+
+For wired USB validation on `ESP32-S3`:
+
+- Pi still drives the controller web path over Wi-Fi.
+- Pi also observes Linux USB/XInput enumeration and input events.
+- The flashed `usb_xinput` firmware now uses a custom TinyUSB app driver via `usbd_app_driver_get_cb()` instead of Arduino's generic vendor helper, so validation should focus on the custom driver and physical USB path.
+- The default Pi bring-up flow should first try a plain flash/upload/startup cycle with no GPIO-JTAG prep. Only after that fails should it force Pi GPIO3/GPIO4 low and enter the GPIO-JTAG recovery/debug path.
 
 ## Implementation Phases
 
@@ -60,6 +68,7 @@ Deliverables:
 
 - `tools/pi/send_controller_packet.py`
 - `tools/pi/e2e_ws_to_ble_test.sh`
+- `tools/pi/e2e_ws_to_usb_test.sh`
 
 Flow:
 
@@ -76,6 +85,13 @@ Pass criteria:
 - Test button packet produces the expected button event.
 - Test axis packet produces the expected axis movement.
 - Disconnect/timeout returns inputs to neutral.
+- `/api/status` reports the expected host transport and variant.
+
+Additional USB-PC pass criteria:
+
+- Linux enumerates the flashed ESP32-S3 as `045e:028e`.
+- The host reaches `SET_CONFIGURATION` successfully.
+- The custom TinyUSB XInput driver accepts the minimum control sequence and produces an input-visible Xbox 360 class device.
 
 ### Phase 3: Browser-Driven Full E2E
 
@@ -151,6 +167,7 @@ Avoid relying on a shared password for automation. Use SSH keys instead.
 - Does the BLE gamepad reconnect reliably after repeated test cycles?
 - Does headless Chromium suffice, or is `Xvfb` required for touch-style Playwright actions?
 - Is Pi onboard Bluetooth stable enough, or should the testbed standardize on a USB dongle?
+- Does the current custom TinyUSB XInput driver need more `gp2040-ce`-style control/auth behavior before Linux consistently accepts it?
 
 ## Recommended First Implementation
 

@@ -77,7 +77,7 @@ stage_repo_snapshot
 ensure_remote_env
 
 log "building, flashing, and validating ${BOARD_NAME} (${HOST_MODE}) from the Pi"
-remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' ERASE_FLASH_FIRST=1 ./tools/hardware_integration_test.sh '${PORT}'"
+remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' ERASE_FLASH_FIRST=1 ./tools/pi/flash_or_debug_s3.sh '${PORT}'"
 
 log "running remote Pi end-to-end test"
 if [[ "${HOST_MODE}" == "ble" ]]; then

@@ -10,7 +10,9 @@
 
 - BLE HID gamepad support varies by host platform and pairing flow.
 - ESP32-S3 builds can also target wired USB host modes with `CONTROLLER_HOST_MODE=usb_switch` or `CONTROLLER_HOST_MODE=usb_xinput`.
-- `usb_xinput` is intended for Windows PC hosts.
+- `usb_xinput` is intended for Windows PC hosts and Linux XInput-class host validation.
+- The `usb_xinput` firmware path now uses a custom TinyUSB class driver rather than Arduino's generic vendor helper.
+- That custom driver is the current implementation direction, but it still needs end-to-end host validation on attached hardware.
 
 ## Power
 
@@ -30,3 +32,9 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 - `./tools/upload_firmware.sh [--board s3|wroom] [--host-mode ble|usb_switch|usb_xinput] [--sta-ssid SSID] [--sta-pass PASS] [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state.
 - `./tools/capture_boot_log.sh [port] [seconds]` toggles reset over serial control lines and captures the boot log.
 - `./tools/hardware_integration_test.sh [--board s3|wroom] [--sta-ssid SSID] [--sta-pass PASS] [port]` rebuilds, flashes, captures boot logs, and fails if the boot banner is missing or BLE advertising starts before NimBLE host sync.
+
+## USB XInput Notes
+
+- `firmware/src/usb_xinput_gamepad.cpp` now registers a TinyUSB app driver through `usbd_app_driver_get_cb()`.
+- The driver owns descriptor callbacks, parses the reserved Xbox 360 interface block in `open()`, opens endpoints directly, primes OUT transfers, and sends reports with `usbd_edpt_xfer()`.
+- If Linux still rejects `SET_CONFIGURATION`, debug the custom driver behavior and physical USB path first rather than reverting to Arduino's old `USB_INTERFACE_VENDOR` helper path.

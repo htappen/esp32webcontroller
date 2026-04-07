@@ -1,6 +1,6 @@
-# ESP32 Web BLE Controller
+# ESP32 Web Controller
 
-ESP32-hosted web controller that runs on a phone and forwards input over WebSocket to firmware, which emits BLE HID gamepad reports to a host.
+ESP32-hosted web controller that runs on a phone and forwards input over WebSocket to firmware, which emits host-controller reports over either Bluetooth or wired USB, depending on the selected transport build.
 
 ## Connectivity Model
 
@@ -9,8 +9,9 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
   - `Shared Wi-Fi mode (STA)`: ESP32 joins an existing LAN SSID so phones on that LAN can access it.
   - `AP+STA mode`: keep AP active as fallback while joining shared Wi-Fi.
 - Host connectivity:
-  - ESP32 advertises as BLE HID gamepad.
-  - Host pairs to BLE controller and receives mapped controller reports.
+  - BLE builds advertise as a BLE HID gamepad.
+  - `usb_switch` builds enumerate as a wired USB controller for Switch-style hosts.
+  - `usb_xinput` builds enumerate as a wired Xbox 360 class device using a custom TinyUSB class-driver backend modeled on `gp2040-ce`.
 - Controller data path:
   - Browser sends controller packets via WebSocket to `ws://<device-hostname>.local:81` when the controller is opened by hostname.
 
@@ -57,6 +58,12 @@ Use the Pi runner when the board is physically connected to the Raspberry Pi ins
 - Example USB XInput run: `CONTROLLER_HOST_MODE=usb_xinput ./tools/pi/run_remote_e2e.sh /dev/ttyACM0`
 - Override the Pi target with `PI_HOST=controller-pi` or `REMOTE_BASE_DIR=/home/controller/controller-pi-e2e` as needed.
 
+Current USB XInput note:
+
+- The repo no longer uses Arduino's generic vendor helper for `usb_xinput`.
+- `firmware/src/usb_xinput_gamepad.cpp` now registers a custom TinyUSB app driver through `usbd_app_driver_get_cb()` and handles descriptor open, endpoint transfer, and minimum XInput control behavior directly.
+- This path builds successfully, but still needs real Linux host validation before it should be treated as stable.
+
 ## End User Guide
 
 Use this section if the board is already flashed and you just want to connect and play.
@@ -99,7 +106,7 @@ If the device has already been configured for a local Wi-Fi network, your phone 
 ## Connection APIs (Scaffold)
 
 - `GET /api/status`:
-  - Returns current network mode/AP/STA status, host BLE status, and WebSocket controller status.
+  - Returns current network mode/AP/STA status, host transport status, and WebSocket controller status.
 - `POST /api/network/sta`:
   - Body: `{ "ssid": "...", "pass": "..." }`
   - Stores STA credentials and starts shared Wi-Fi connection attempt.

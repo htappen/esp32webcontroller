@@ -22,12 +22,16 @@ duration = float(sys.argv[2])
 
 def open_serial():
     deadline = time.time() + 5.0
+    last_error = None
     while time.time() < deadline:
         try:
             return serial.Serial(port, 115200, timeout=0.25)
-        except serial.SerialException:
+        except serial.SerialException as exc:
+            last_error = exc
             time.sleep(0.1)
-    raise
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f'failed to open serial port {port}')
 
 ser = open_serial()
 try:

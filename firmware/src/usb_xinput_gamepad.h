@@ -11,10 +11,11 @@ class UsbXInputGamepadBridge : public HostTransport {
   bool resetConnection() override;
   bool setPairingEnabled(bool enabled) override;
   bool send(const HostInputReport& report) override;
-  HostStatus status() const override;
+ HostStatus status() const override;
 
  private:
   bool started_ = false;
+  bool deferred_start_ = false;
 };
 
 #endif

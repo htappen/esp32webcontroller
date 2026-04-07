@@ -43,6 +43,15 @@ namespace config {
 #ifndef CONTROLLER_DEFAULT_STA_PASS
 #define CONTROLLER_DEFAULT_STA_PASS ""
 #endif
+#ifndef CONTROLLER_USB_XINPUT_DEFER_BEGIN
+#define CONTROLLER_USB_XINPUT_DEFER_BEGIN 0
+#endif
+#ifndef CONTROLLER_USB_XINPUT_ATTACH_DELAY_MS
+#define CONTROLLER_USB_XINPUT_ATTACH_DELAY_MS 10000
+#endif
+#ifndef CONTROLLER_USB_XINPUT_ATTACH_DELAY_STEP_MS
+#define CONTROLLER_USB_XINPUT_ATTACH_DELAY_STEP_MS 500
+#endif
 
 static constexpr char kApSsid[] = CONTROLLER_AP_SSID;
 static constexpr char kApPass[] = "";
@@ -58,6 +67,9 @@ static constexpr uint8_t kStaConnectMaxAttempts = 3;
 static constexpr uint32_t kStaReconnectBackoffMs = 3000;
 static constexpr uint32_t kStaCandidateStartDelayMs = 750;
 static constexpr uint32_t kReportIntervalMs = 16;
+static constexpr uint32_t kUsbXInputBootLogDelayMs = CONTROLLER_USB_XINPUT_ATTACH_DELAY_MS;
+static constexpr uint32_t kUsbXInputBootLogStepMs = CONTROLLER_USB_XINPUT_ATTACH_DELAY_STEP_MS;
+static constexpr bool kUsbXInputDeferBegin = CONTROLLER_USB_XINPUT_DEFER_BEGIN != 0;
 static constexpr char kBleDeviceName[] = CONTROLLER_BLE_NAME;
 static constexpr char kUsbSwitchProductName[] = CONTROLLER_FRIENDLY_NAME " Pad";
 static constexpr char kUsbXInputProductName[] = CONTROLLER_FRIENDLY_NAME " XInput";

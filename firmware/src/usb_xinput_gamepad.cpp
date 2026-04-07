@@ -10,9 +10,11 @@
 
 #include "common/tusb_common.h"
 #include "common/tusb_types.h"
-#include "class/vendor/vendor_device.h"
 #include "config.h"
+#include "device/usbd.h"
+#include "device/usbd_pvt.h"
 #include "esp32-hal-tinyusb.h"
+#include "esp_rom_sys.h"
 
 namespace {
 constexpr uint16_t kXbox360Vid = 0x045e;
@@ -24,11 +26,12 @@ constexpr uint8_t kInterfaceNumber = 0;
 constexpr uint8_t kControlPacketLength = 20;
 constexpr uint8_t kFeedbackPacketLength = 8;
 constexpr uint8_t kEndpointPacketSize = 32;
-constexpr uint8_t kEndpointZeroPacketSize = 8;
+constexpr uint8_t kEndpointZeroPacketSize = CFG_TUD_ENDPOINT0_SIZE;
 constexpr uint16_t kXbox360ConfigurationTotalLength = 0x0099;
 constexpr uint16_t kXbox360BcdDevice = 0x0114;
 constexpr uint8_t kUsbAttributesBusPoweredRemoteWakeup = 0xa0;
 constexpr uint16_t kUsbPowerMilliAmps = 500;
+constexpr uint8_t kInterfaceCount = 4;
 constexpr uint8_t kManufacturerStringIndex = 0x01;
 constexpr uint8_t kProductStringIndex = 0x02;
 constexpr uint8_t kSerialStringIndex = 0x03;
@@ -68,6 +71,31 @@ struct __attribute__((packed)) XInputControlReport {
 static_assert(sizeof(XInputControlReport) == kControlPacketLength);
 
 XInputControlReport g_report;
+
+struct XInputDriverState {
+  bool interfaces_opened = false;
+  uint8_t rhport = 0;
+  uint8_t primary_interface = 0;
+  uint8_t control_in_ep = 0;
+  uint8_t control_out_ep = 0;
+  uint8_t headset_in_ep = 0;
+  uint8_t headset_out_ep = 0;
+  uint8_t headset_aux_in_ep = 0;
+  uint8_t headset_aux_out_ep = 0;
+  uint8_t auxiliary_in_ep = 0;
+  bool report_in_flight = false;
+  bool report_dirty = false;
+  XInputControlReport pending_report;
+  uint8_t control_out_buffer[kEndpointPacketSize] = {};
+  uint8_t headset_out_buffer[kEndpointPacketSize] = {};
+  uint8_t headset_aux_out_buffer[kEndpointPacketSize] = {};
+};
+
+XInputDriverState g_driver_state;
+bool g_logged_custom_descriptor = false;
+bool g_logged_device_descriptor = false;
+bool g_logged_config_descriptor = false;
+bool g_logged_string_descriptor[5] = {};
 
 constexpr std::array<uint8_t, kFeedbackPacketLength> kCapabilitiesFeedback = {
     0x00, 0x08, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00,
@@ -124,7 +152,14 @@ static_assert(kXbox360ConfigurationDescriptor.size() == kXbox360ConfigurationTot
 constexpr const char* kSecurityMethodString =
     "Xbox Security Method 3, Version 1.00, Microsoft Corporation. All rights reserved.";
 
-uint16_t xinputVendorLoadDescriptor(uint8_t* dst, uint8_t* itf);
+uint16_t xinputCustomLoadDescriptor(uint8_t* dst, uint8_t* itf);
+void xinputDriverInit(void);
+void xinputDriverReset(uint8_t rhport);
+uint16_t xinputDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf, uint16_t max_len);
+bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request);
+bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes);
+bool xinputPrimeOutEndpoint(uint8_t rhport, uint8_t ep_addr);
+bool xinputStartReportTransfer(void);
 
 uint32_t serialFromUuid() {
   uint32_t hash = 2166136261u;
@@ -165,14 +200,55 @@ uint16_t buttonsFromReport(const HostInputReport& report) {
   return buttons;
 }
 
-void xinputUsbInit() {
+uint8_t* outBufferForEndpoint(uint8_t ep_addr) {
+  switch (ep_addr) {
+    case 0x01:
+      return g_driver_state.control_out_buffer;
+    case 0x02:
+      return g_driver_state.headset_out_buffer;
+    case 0x03:
+      return g_driver_state.headset_aux_out_buffer;
+    default:
+      return nullptr;
+  }
+}
+
+uint16_t interfaceSpanLength(tusb_desc_interface_t const* desc_intf, uint16_t max_len) {
+  uint16_t consumed = 0;
+  const uint8_t first_interface = desc_intf->bInterfaceNumber;
+  auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
+
+  while (consumed < max_len) {
+    const uint8_t len = tu_desc_len(desc);
+    if (len == 0 || consumed + len > max_len) {
+      return 0;
+    }
+
+    if (consumed != 0 && tu_desc_type(desc) == TUSB_DESC_INTERFACE) {
+      const auto* next_interface = reinterpret_cast<tusb_desc_interface_t const*>(desc);
+      if (next_interface->bInterfaceNumber >= static_cast<uint8_t>(first_interface + kInterfaceCount)) {
+        break;
+      }
+    }
+
+    consumed = static_cast<uint16_t>(consumed + len);
+    desc = tu_desc_next(desc);
+  }
+
+  return consumed;
+}
+
+bool xinputUsbInit() {
   static bool initialized = false;
   if (initialized) {
-    return;
+    return true;
+  }
+  if (tinyusb_enable_interface(USB_INTERFACE_CUSTOM, kXbox360InterfaceDescriptorLength, xinputCustomLoadDescriptor) !=
+      ESP_OK) {
+    esp_rom_printf("USBX: tinyusb_enable_interface failed\n");
+    return false;
   }
   initialized = true;
-
-  tinyusb_enable_interface(USB_INTERFACE_VENDOR, kXbox360InterfaceDescriptorLength, xinputVendorLoadDescriptor);
   USB.VID(kXbox360Vid);
   USB.PID(kXbox360Pid);
   USB.firmwareVersion(kXbox360BcdDevice);
@@ -185,6 +261,7 @@ void xinputUsbInit() {
   USB.productName("Controller");
   USB.manufacturerName("Microsoft");
   USB.serialNumber(config::kDeviceUuid);
+  return true;
 }
 
 uint16_t copyUtf16StringDescriptor(const char* value, uint16_t* dst) {
@@ -199,18 +276,225 @@ uint16_t copyUtf16StringDescriptor(const char* value, uint16_t* dst) {
   return dst[0];
 }
 
-uint16_t xinputVendorLoadDescriptor(uint8_t* dst, uint8_t* itf) {
-  *itf += 4;
+uint16_t xinputCustomLoadDescriptor(uint8_t* dst, uint8_t* itf) {
+  if (!g_logged_custom_descriptor) {
+    esp_rom_printf("USBX: load custom descriptor itf=%u add=%u\n", static_cast<unsigned>(*itf),
+                   static_cast<unsigned>(kInterfaceCount));
+    g_logged_custom_descriptor = true;
+  }
+  *itf = static_cast<uint8_t>(*itf + kInterfaceCount);
   memcpy(dst, kXbox360ConfigurationDescriptor.data() + TUD_CONFIG_DESC_LEN, kXbox360InterfaceDescriptorLength);
   return kXbox360InterfaceDescriptorLength;
+}
+
+bool xinputPrimeOutEndpoint(uint8_t rhport, uint8_t ep_addr) {
+  uint8_t* buffer = outBufferForEndpoint(ep_addr);
+  if (buffer == nullptr) {
+    return false;
+  }
+  return usbd_edpt_xfer(rhport, ep_addr, buffer, sizeof(g_driver_state.control_out_buffer));
+}
+
+bool xinputStartReportTransfer() {
+  if (!g_driver_state.interfaces_opened || g_driver_state.control_in_ep == 0 || g_driver_state.report_in_flight) {
+    return false;
+  }
+
+  if (!tud_ready() || !usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep)) {
+    return false;
+  }
+
+  g_driver_state.report_in_flight =
+      usbd_edpt_xfer(g_driver_state.rhport, g_driver_state.control_in_ep,
+                     reinterpret_cast<uint8_t*>(&g_driver_state.pending_report), sizeof(g_driver_state.pending_report));
+  if (g_driver_state.report_in_flight) {
+    g_driver_state.report_dirty = false;
+  }
+  return g_driver_state.report_in_flight;
+}
+
+void xinputDriverInit(void) {
+  g_driver_state = XInputDriverState{};
+  g_logged_custom_descriptor = false;
+  g_logged_device_descriptor = false;
+  g_logged_config_descriptor = false;
+  memset(g_logged_string_descriptor, 0, sizeof(g_logged_string_descriptor));
+}
+
+void xinputDriverReset(uint8_t rhport) {
+  (void)rhport;
+  xinputDriverInit();
+}
+
+uint16_t xinputDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf, uint16_t max_len) {
+  esp_rom_printf("USBX: driver open cls=%u sub=%u proto=%u itf=%u len=%u\n",
+                 static_cast<unsigned>(desc_intf->bInterfaceClass),
+                 static_cast<unsigned>(desc_intf->bInterfaceSubClass),
+                 static_cast<unsigned>(desc_intf->bInterfaceProtocol),
+                 static_cast<unsigned>(desc_intf->bInterfaceNumber), static_cast<unsigned>(max_len));
+  if (desc_intf->bInterfaceClass != kVendorClass || desc_intf->bInterfaceSubClass != 0x5d ||
+      desc_intf->bInterfaceProtocol != 0x01) {
+    esp_rom_printf("USBX: driver open rejected\n");
+    return 0;
+  }
+
+  const uint16_t span_len = interfaceSpanLength(desc_intf, max_len);
+  if (span_len == 0) {
+    esp_rom_printf("USBX: driver open span=0\n");
+    return 0;
+  }
+
+  g_driver_state = XInputDriverState{};
+  g_driver_state.interfaces_opened = true;
+  g_driver_state.rhport = rhport;
+  g_driver_state.primary_interface = desc_intf->bInterfaceNumber;
+
+  auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
+  const auto* const end = desc + span_len;
+  uint8_t current_interface = desc_intf->bInterfaceNumber;
+
+  while (desc < end) {
+    const uint8_t type = tu_desc_type(desc);
+
+    if (type == TUSB_DESC_INTERFACE) {
+      current_interface = reinterpret_cast<tusb_desc_interface_t const*>(desc)->bInterfaceNumber;
+    } else if (type == TUSB_DESC_ENDPOINT) {
+      auto const* ep_desc = reinterpret_cast<tusb_desc_endpoint_t const*>(desc);
+      if (!usbd_edpt_open(rhport, ep_desc)) {
+        g_driver_state.interfaces_opened = false;
+        esp_rom_printf("USBX: ep open failed addr=0x%02x\n", static_cast<unsigned>(ep_desc->bEndpointAddress));
+        return 0;
+      }
+
+      switch (current_interface) {
+        case 0:
+          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
+            g_driver_state.control_in_ep = ep_desc->bEndpointAddress;
+          } else {
+            g_driver_state.control_out_ep = ep_desc->bEndpointAddress;
+          }
+          break;
+        case 1:
+          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
+            if (g_driver_state.headset_in_ep == 0) {
+              g_driver_state.headset_in_ep = ep_desc->bEndpointAddress;
+            } else {
+              g_driver_state.headset_aux_in_ep = ep_desc->bEndpointAddress;
+            }
+          } else {
+            if (g_driver_state.headset_out_ep == 0) {
+              g_driver_state.headset_out_ep = ep_desc->bEndpointAddress;
+            } else {
+              g_driver_state.headset_aux_out_ep = ep_desc->bEndpointAddress;
+            }
+          }
+          break;
+        case 2:
+          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
+            g_driver_state.auxiliary_in_ep = ep_desc->bEndpointAddress;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    desc = tu_desc_next(desc);
+  }
+
+  xinputPrimeOutEndpoint(rhport, g_driver_state.control_out_ep);
+  xinputPrimeOutEndpoint(rhport, g_driver_state.headset_out_ep);
+  xinputPrimeOutEndpoint(rhport, g_driver_state.headset_aux_out_ep);
+  esp_rom_printf(
+      "USBX: driver open ok span=%u in=0x%02x out=0x%02x hs_in=0x%02x hs_out=0x%02x aux=0x%02x\n",
+      static_cast<unsigned>(span_len), static_cast<unsigned>(g_driver_state.control_in_ep),
+      static_cast<unsigned>(g_driver_state.control_out_ep), static_cast<unsigned>(g_driver_state.headset_in_ep),
+      static_cast<unsigned>(g_driver_state.headset_out_ep), static_cast<unsigned>(g_driver_state.auxiliary_in_ep));
+  return span_len;
+}
+
+bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request) {
+  if (stage != CONTROL_STAGE_SETUP) {
+    return true;
+  }
+
+  if (request->bmRequestType_bit.type != TUSB_REQ_TYPE_VENDOR || request->bRequest != 0x01) {
+    esp_rom_printf("USBX: ctrl unsupported bm=0x%02x req=0x%02x val=0x%04x idx=0x%04x len=%u\n",
+                   static_cast<unsigned>(request->bmRequestType), static_cast<unsigned>(request->bRequest),
+                   static_cast<unsigned>(request->wValue), static_cast<unsigned>(request->wIndex),
+                   static_cast<unsigned>(request->wLength));
+    return false;
+  }
+
+  esp_rom_printf("USBX: ctrl bm=0x%02x req=0x%02x val=0x%04x idx=0x%04x len=%u\n",
+                 static_cast<unsigned>(request->bmRequestType), static_cast<unsigned>(request->bRequest),
+                 static_cast<unsigned>(request->wValue), static_cast<unsigned>(request->wIndex),
+                 static_cast<unsigned>(request->wLength));
+
+  if (request->bmRequestType_bit.direction == TUSB_DIR_IN) {
+    if (request->wValue == 0x0000 && request->wIndex == 0x0000) {
+      if (request->bmRequestType == 0xc0) {
+        auto serial = serialPacket();
+        return tud_control_xfer(rhport, request, serial.data(), serial.size());
+      }
+
+      if (request->bmRequestType == 0xc1) {
+        return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesFeedback.data()),
+                                kCapabilitiesFeedback.size());
+      }
+    }
+
+    if (request->bmRequestType == 0xc1 && request->wValue == 0x0100) {
+      return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesInputs.data()),
+                              kCapabilitiesInputs.size());
+    }
+
+    return false;
+  }
+
+  return tud_control_status(rhport, request);
+}
+
+bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
+  if (!g_driver_state.interfaces_opened || result != XFER_RESULT_SUCCESS) {
+    if (ep_addr == g_driver_state.control_in_ep) {
+      g_driver_state.report_in_flight = false;
+    } else if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
+      xinputPrimeOutEndpoint(rhport, ep_addr);
+    }
+    return true;
+  }
+
+  if (ep_addr == g_driver_state.control_in_ep) {
+    g_driver_state.report_in_flight = false;
+    if (g_driver_state.report_dirty) {
+      xinputStartReportTransfer();
+    }
+    return true;
+  }
+
+  if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
+    (void)xferred_bytes;
+    xinputPrimeOutEndpoint(rhport, ep_addr);
+  }
+
+  return true;
 }
 }  // namespace
 
 extern "C" uint8_t const* tud_descriptor_device_cb(void) {
+  if (!g_logged_device_descriptor) {
+    esp_rom_printf("USBX: device descriptor cb\n");
+    g_logged_device_descriptor = true;
+  }
   return reinterpret_cast<uint8_t const*>(&kXbox360DeviceDescriptor);
 }
 
 extern "C" uint8_t const* tud_descriptor_configuration_cb(uint8_t index) {
+  if (!g_logged_config_descriptor) {
+    esp_rom_printf("USBX: config descriptor cb index=%u\n", static_cast<unsigned>(index));
+    g_logged_config_descriptor = true;
+  }
   (void)index;
   return kXbox360ConfigurationDescriptor.data();
 }
@@ -218,6 +502,11 @@ extern "C" uint8_t const* tud_descriptor_configuration_cb(uint8_t index) {
 extern "C" uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
   (void)langid;
   static uint16_t descriptor[127];
+
+  if (index < sizeof(g_logged_string_descriptor) && !g_logged_string_descriptor[index]) {
+    esp_rom_printf("USBX: string descriptor cb index=%u\n", static_cast<unsigned>(index));
+    g_logged_string_descriptor[index] = true;
+  }
 
   if (index == kLanguageStringIndex) {
     descriptor[0] = static_cast<uint16_t>((TUSB_DESC_STRING << 8) | 4);
@@ -247,63 +536,44 @@ extern "C" uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t lang
   return descriptor;
 }
 
-extern "C" bool tinyusb_vendor_control_request_cb(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request) {
-  if (stage != CONTROL_STAGE_SETUP) {
-    return true;
-  }
+extern "C" usbd_class_driver_t const* usbd_app_driver_get_cb(uint8_t* driver_count) {
+  static usbd_class_driver_t const kXInputDriver = {
+#if CFG_TUSB_DEBUG >= CFG_TUD_LOG_LEVEL
+      "xinput",
+#endif
+      xinputDriverInit,
+      xinputDriverReset,
+      xinputDriverOpen,
+      xinputDriverControlXfer,
+      xinputDriverXfer,
+      nullptr,
+  };
 
-  if (request->bRequest != 0x01 || request->wIndex != 0x0000) {
-    return false;
-  }
-
-  if (request->bmRequestType == 0xc0 && request->wValue == 0x0000) {
-    auto serial = serialPacket();
-    return tud_control_xfer(rhport, request, serial.data(), serial.size());
-  }
-
-  if (request->bmRequestType != 0xc1) {
-    return false;
-  }
-
-  if (request->wValue == 0x0000) {
-    return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesFeedback.data()),
-                            kCapabilitiesFeedback.size());
-  }
-
-  if (request->wValue == 0x0100) {
-    return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesInputs.data()),
-                            kCapabilitiesInputs.size());
-  }
-
-  return false;
-}
-
-extern "C" void tud_vendor_rx_cb(uint8_t itf) {
-  if (itf != kInterfaceNumber) {
-    return;
-  }
-
-  uint8_t buffer[kEndpointPacketSize];
-  const uint32_t available = tud_vendor_n_available(itf);
-  if (available == 0) {
-    return;
-  }
-
-  const uint32_t count = tud_vendor_n_read(itf, buffer, sizeof(buffer));
-  if (count >= 5 && buffer[0] == 0x00 && buffer[1] == 0x08) {
-    Serial.printf("USB XInput feedback: left=%u right=%u\n", buffer[3], buffer[4]);
-  } else if (count >= 3 && buffer[0] == 0x01) {
-    Serial.printf("USB XInput LED mode: %u\n", buffer[2]);
-  }
+  *driver_count = 1;
+  return &kXInputDriver;
 }
 
 bool UsbXInputGamepadBridge::begin() {
-  xinputUsbInit();
+  for (uint32_t elapsed = 0; elapsed < config::kUsbXInputBootLogDelayMs; elapsed += config::kUsbXInputBootLogStepMs) {
+    delay(config::kUsbXInputBootLogStepMs);
+  }
+  if (config::kUsbXInputDeferBegin) {
+    esp_rom_printf("USBX: begin defer=1\n");
+    deferred_start_ = true;
+    return true;
+  }
+  esp_rom_printf("USBX: before xinputUsbInit\n");
+  if (!xinputUsbInit()) {
+    esp_rom_printf("USBX: xinputUsbInit failed\n");
+    return false;
+  }
+  esp_rom_printf("USBX: after xinputUsbInit\n");
+  esp_rom_printf("USBX: before USB.begin\n");
   USB.begin();
+  esp_rom_printf("USBX: after USB.begin\n");
   started_ = true;
   g_report = XInputControlReport{};
-  Serial.printf("USB host ready: transport=usb variant=pc board=%s vid=%04x pid=%04x\n", config::kBoardName,
-                kXbox360Vid, kXbox360Pid);
+  esp_rom_printf("USBX: begin complete\n");
   return true;
 }
 
@@ -319,7 +589,7 @@ bool UsbXInputGamepadBridge::setPairingEnabled(bool enabled) {
 }
 
 bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
-  if (!started_ || !tud_vendor_n_mounted(kInterfaceNumber)) {
+  if (!started_ || deferred_start_ || !g_driver_state.interfaces_opened || !tud_ready()) {
     return false;
   }
 
@@ -331,11 +601,9 @@ bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
   g_report.rx = report.rx;
   g_report.ry = report.ry;
 
-  if (tud_vendor_n_write(kInterfaceNumber, &g_report, sizeof(g_report)) != sizeof(g_report)) {
-    return false;
-  }
-  tud_vendor_n_write_flush(kInterfaceNumber);
-  return true;
+  g_driver_state.pending_report = g_report;
+  g_driver_state.report_dirty = true;
+  return xinputStartReportTransfer();
 }
 
 HostStatus UsbXInputGamepadBridge::status() const {
@@ -343,8 +611,8 @@ HostStatus UsbXInputGamepadBridge::status() const {
   status.transport = "usb";
   status.variant = "pc";
   status.display_name = config::kUsbXInputProductName;
-  status.ready = started_;
-  status.connected = started_ && tud_vendor_n_mounted(kInterfaceNumber);
+  status.ready = started_ && !deferred_start_ && g_driver_state.interfaces_opened;
+  status.connected = started_ && !deferred_start_ && tud_mounted();
   status.supports_pairing = false;
   status.pairing_enabled = false;
   status.advertising = false;

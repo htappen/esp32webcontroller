@@ -55,6 +55,9 @@ printf '[build] device url: %s\n' "${CONTROLLER_DEVICE_LOCAL_URL}"
 if [[ -n "${CONTROLLER_DEFAULT_STA_SSID:-}" ]]; then
   printf '[build] default saved STA ssid: %s\n' "${CONTROLLER_DEFAULT_STA_SSID}"
 fi
+if [[ "${CONTROLLER_USB_XINPUT_DEFER_BEGIN:-0}" == "1" ]]; then
+  printf '[build] deferring USB.begin() for usb_xinput diagnostics\n'
+fi
 (
   cd "${FIRMWARE_DIR}"
   pio run -e "${ENV_NAME}"
