@@ -11,6 +11,7 @@ HOST_MODE_OVERRIDE=""
 DEVICE_UUID=""
 STA_SSID_OVERRIDE=""
 STA_PASS_OVERRIDE=""
+SKIP_UPLOADFS="${SKIP_UPLOADFS:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +34,10 @@ while [[ $# -gt 0 ]]; do
     --host-mode)
       HOST_MODE_OVERRIDE="${2:-}"
       shift 2
+      ;;
+    --skip-uploadfs)
+      SKIP_UPLOADFS="1"
+      shift
       ;;
     *)
       if [[ -z "${UPLOAD_PORT}" ]]; then
@@ -88,11 +93,15 @@ else
   exit 1
 fi
 
-log "uploading filesystem image"
-(
-  cd "${FIRMWARE_DIR}"
-  pio_run -e "${ENV_NAME}" -t uploadfs
-)
+if [[ "${SKIP_UPLOADFS}" == "1" ]]; then
+  log "skipping filesystem image upload"
+else
+  log "uploading filesystem image"
+  (
+    cd "${FIRMWARE_DIR}"
+    pio_run -e "${ENV_NAME}" -t uploadfs
+  )
+fi
 
 log "uploading firmware image"
 (

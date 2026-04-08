@@ -75,7 +75,8 @@ if [[ "${BOARD_NAME}" != "s3" ]]; then
   exit "${plain_flash_status}"
 fi
 
-log "plain flash/startup path failed with status ${plain_flash_status}; falling back to S3 reflash + GPIO-JTAG debug"
+log "plain flash/startup path failed with status ${plain_flash_status}; switching to GPIO-JTAG debug flow"
+bash "${ROOT_DIR}/tools/pi/prepare_s3_gpio_jtag.sh"
 bash "${ROOT_DIR}/tools/pi/reset_s3_watchdog_if_present.sh"
 
 if CONTROLLER_BOARD="${BOARD_NAME}" \
@@ -90,9 +91,9 @@ if CONTROLLER_BOARD="${BOARD_NAME}" \
     --sta-ssid "${STA_SSID_OVERRIDE}" \
     --sta-pass "${STA_PASS_OVERRIDE}" \
     "${PORT}"; then
-  log "fallback reflash succeeded; launching debugger"
+  log "fallback reflash succeeded; launching GPIO-JTAG debugger"
 else
-  log "fallback reflash failed; launching debugger against the last flashed image"
+  log "fallback reflash failed; launching GPIO-JTAG debugger against the last flashed image"
 fi
 
 exec env \

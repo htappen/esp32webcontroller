@@ -96,6 +96,15 @@ bool g_logged_custom_descriptor = false;
 bool g_logged_device_descriptor = false;
 bool g_logged_config_descriptor = false;
 bool g_logged_string_descriptor[5] = {};
+uint32_t g_send_log_count = 0;
+uint32_t g_start_transfer_log_count = 0;
+uint32_t g_in_xfer_log_count = 0;
+uint32_t g_out_xfer_log_count = 0;
+uint32_t g_send_attempt_count = 0;
+uint32_t g_send_success_count = 0;
+
+constexpr uint32_t kMaxVerboseSendLogs = 24;
+constexpr uint32_t kMaxVerboseTransferLogs = 32;
 
 constexpr std::array<uint8_t, kFeedbackPacketLength> kCapabilitiesFeedback = {
     0x00, 0x08, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00,
@@ -292,21 +301,48 @@ bool xinputPrimeOutEndpoint(uint8_t rhport, uint8_t ep_addr) {
   if (buffer == nullptr) {
     return false;
   }
-  return usbd_edpt_xfer(rhport, ep_addr, buffer, sizeof(g_driver_state.control_out_buffer));
+  const bool queued = usbd_edpt_xfer(rhport, ep_addr, buffer, sizeof(g_driver_state.control_out_buffer));
+  if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
+    esp_rom_printf("USBX: prime out ep=0x%02x queued=%u\n", static_cast<unsigned>(ep_addr), queued ? 1u : 0u);
+  }
+  return queued;
 }
 
 bool xinputStartReportTransfer() {
   if (!g_driver_state.interfaces_opened || g_driver_state.control_in_ep == 0 || g_driver_state.report_in_flight) {
+    if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
+      esp_rom_printf("USBX: start xfer blocked open=%u in_ep=0x%02x inflight=%u dirty=%u\n",
+                     g_driver_state.interfaces_opened ? 1u : 0u, static_cast<unsigned>(g_driver_state.control_in_ep),
+                     g_driver_state.report_in_flight ? 1u : 0u, g_driver_state.report_dirty ? 1u : 0u);
+      ++g_start_transfer_log_count;
+    }
     return false;
   }
 
-  if (!tud_ready() || !usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep)) {
+  const bool tud_is_ready = tud_ready();
+  const bool ep_ready = tud_is_ready && usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep);
+  if (!tud_is_ready || !ep_ready) {
+    if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
+      esp_rom_printf("USBX: start xfer not ready tud=%u ep=0x%02x ep_ready=%u dirty=%u\n", tud_is_ready ? 1u : 0u,
+                     static_cast<unsigned>(g_driver_state.control_in_ep), ep_ready ? 1u : 0u,
+                     g_driver_state.report_dirty ? 1u : 0u);
+      ++g_start_transfer_log_count;
+    }
     return false;
   }
 
-  g_driver_state.report_in_flight =
-      usbd_edpt_xfer(g_driver_state.rhport, g_driver_state.control_in_ep,
-                     reinterpret_cast<uint8_t*>(&g_driver_state.pending_report), sizeof(g_driver_state.pending_report));
+  g_driver_state.report_in_flight = usbd_edpt_xfer(g_driver_state.rhport, g_driver_state.control_in_ep,
+                                                   reinterpret_cast<uint8_t*>(&g_driver_state.pending_report),
+                                                   sizeof(g_driver_state.pending_report));
+  if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
+    esp_rom_printf("USBX: start xfer ep=0x%02x queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d\n",
+                   static_cast<unsigned>(g_driver_state.control_in_ep), g_driver_state.report_in_flight ? 1u : 0u,
+                   static_cast<unsigned>(g_driver_state.pending_report.buttons),
+                   static_cast<unsigned>(g_driver_state.pending_report.lt),
+                   static_cast<unsigned>(g_driver_state.pending_report.rt), g_driver_state.pending_report.lx,
+                   g_driver_state.pending_report.ly, g_driver_state.pending_report.rx, g_driver_state.pending_report.ry);
+    ++g_start_transfer_log_count;
+  }
   if (g_driver_state.report_in_flight) {
     g_driver_state.report_dirty = false;
   }
@@ -319,6 +355,12 @@ void xinputDriverInit(void) {
   g_logged_device_descriptor = false;
   g_logged_config_descriptor = false;
   memset(g_logged_string_descriptor, 0, sizeof(g_logged_string_descriptor));
+  g_send_log_count = 0;
+  g_start_transfer_log_count = 0;
+  g_in_xfer_log_count = 0;
+  g_out_xfer_log_count = 0;
+  g_send_attempt_count = 0;
+  g_send_success_count = 0;
 }
 
 void xinputDriverReset(uint8_t rhport) {
@@ -459,7 +501,22 @@ bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
   if (!g_driver_state.interfaces_opened || result != XFER_RESULT_SUCCESS) {
     if (ep_addr == g_driver_state.control_in_ep) {
       g_driver_state.report_in_flight = false;
+      if (g_in_xfer_log_count < kMaxVerboseTransferLogs) {
+        esp_rom_printf("USBX: in xfer incomplete ep=0x%02x result=%u bytes=%u dirty=%u\n",
+                       static_cast<unsigned>(ep_addr), static_cast<unsigned>(result),
+                       static_cast<unsigned>(xferred_bytes), g_driver_state.report_dirty ? 1u : 0u);
+        ++g_in_xfer_log_count;
+      }
     } else if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
+      if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
+        const uint8_t* buffer = outBufferForEndpoint(ep_addr);
+        esp_rom_printf("USBX: out xfer incomplete ep=0x%02x result=%u bytes=%u data=%02x %02x %02x %02x\n",
+                       static_cast<unsigned>(ep_addr), static_cast<unsigned>(result),
+                       static_cast<unsigned>(xferred_bytes), buffer != nullptr ? buffer[0] : 0u,
+                       buffer != nullptr ? buffer[1] : 0u, buffer != nullptr ? buffer[2] : 0u,
+                       buffer != nullptr ? buffer[3] : 0u);
+        ++g_out_xfer_log_count;
+      }
       xinputPrimeOutEndpoint(rhport, ep_addr);
     }
     return true;
@@ -467,6 +524,13 @@ bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
 
   if (ep_addr == g_driver_state.control_in_ep) {
     g_driver_state.report_in_flight = false;
+    if (g_in_xfer_log_count < kMaxVerboseTransferLogs) {
+      esp_rom_printf("USBX: in xfer complete ep=0x%02x bytes=%u dirty=%u success=%u/%u\n",
+                     static_cast<unsigned>(ep_addr), static_cast<unsigned>(xferred_bytes),
+                     g_driver_state.report_dirty ? 1u : 0u, static_cast<unsigned>(g_send_success_count),
+                     static_cast<unsigned>(g_send_attempt_count));
+      ++g_in_xfer_log_count;
+    }
     if (g_driver_state.report_dirty) {
       xinputStartReportTransfer();
     }
@@ -474,7 +538,16 @@ bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
   }
 
   if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
-    (void)xferred_bytes;
+    if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
+      const uint8_t* buffer = outBufferForEndpoint(ep_addr);
+      esp_rom_printf("USBX: out xfer complete ep=0x%02x bytes=%u data=%02x %02x %02x %02x %02x %02x %02x %02x\n",
+                     static_cast<unsigned>(ep_addr), static_cast<unsigned>(xferred_bytes),
+                     buffer != nullptr ? buffer[0] : 0u, buffer != nullptr ? buffer[1] : 0u,
+                     buffer != nullptr ? buffer[2] : 0u, buffer != nullptr ? buffer[3] : 0u,
+                     buffer != nullptr ? buffer[4] : 0u, buffer != nullptr ? buffer[5] : 0u,
+                     buffer != nullptr ? buffer[6] : 0u, buffer != nullptr ? buffer[7] : 0u);
+      ++g_out_xfer_log_count;
+    }
     xinputPrimeOutEndpoint(rhport, ep_addr);
   }
 
@@ -589,7 +662,17 @@ bool UsbXInputGamepadBridge::setPairingEnabled(bool enabled) {
 }
 
 bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
-  if (!started_ || deferred_start_ || !g_driver_state.interfaces_opened || !tud_ready()) {
+  ++g_send_attempt_count;
+  const bool tud_is_ready = tud_ready();
+  const bool ep_ready = g_driver_state.interfaces_opened && g_driver_state.control_in_ep != 0 &&
+                        usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep);
+  if (!started_ || deferred_start_ || !g_driver_state.interfaces_opened || !tud_is_ready) {
+    if (g_send_log_count < kMaxVerboseSendLogs) {
+      esp_rom_printf("USBX: send blocked started=%u deferred=%u open=%u tud=%u in_ep=0x%02x ep_ready=%u\n",
+                     started_ ? 1u : 0u, deferred_start_ ? 1u : 0u, g_driver_state.interfaces_opened ? 1u : 0u,
+                     tud_is_ready ? 1u : 0u, static_cast<unsigned>(g_driver_state.control_in_ep), ep_ready ? 1u : 0u);
+      ++g_send_log_count;
+    }
     return false;
   }
 
@@ -603,7 +686,18 @@ bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
 
   g_driver_state.pending_report = g_report;
   g_driver_state.report_dirty = true;
-  return xinputStartReportTransfer();
+  const bool queued = xinputStartReportTransfer();
+  if (queued) {
+    ++g_send_success_count;
+  }
+  if (g_send_log_count < kMaxVerboseSendLogs) {
+    esp_rom_printf("USBX: send queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d ep_ready=%u\n",
+                   queued ? 1u : 0u, static_cast<unsigned>(g_report.buttons), static_cast<unsigned>(g_report.lt),
+                   static_cast<unsigned>(g_report.rt), g_report.lx, g_report.ly, g_report.rx, g_report.ry,
+                   ep_ready ? 1u : 0u);
+    ++g_send_log_count;
+  }
+  return queued;
 }
 
 HostStatus UsbXInputGamepadBridge::status() const {

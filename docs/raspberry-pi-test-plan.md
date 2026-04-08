@@ -39,7 +39,7 @@ For wired USB validation on `ESP32-S3`:
 - Pi still drives the controller web path over Wi-Fi.
 - Pi also observes Linux USB/XInput enumeration and input events.
 - The flashed `usb_xinput` firmware now uses a custom TinyUSB app driver via `usbd_app_driver_get_cb()` instead of Arduino's generic vendor helper, so validation should focus on the custom driver and physical USB path.
-- The default Pi bring-up flow should first try a plain flash/upload/startup cycle with no GPIO-JTAG prep. Only after that fails should it force Pi GPIO3/GPIO4 low and enter the GPIO-JTAG recovery/debug path.
+- The default Pi bring-up flow should first try a plain flash/upload/startup cycle with no GPIO-JTAG prep. Only after that fails should it force Pi `GPIO3`/`GPIO4` low before reset and enter the Raspberry Pi GPIO-JTAG recovery/debug path. USB-path debugging should not rely on the ESP32-S3 built-in USB JTAG interface.
 
 ## Implementation Phases
 

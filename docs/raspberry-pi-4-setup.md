@@ -247,9 +247,9 @@ cd ~/controller-pi-e2e
 ./tools/pi/stop_openocd_s3_gpio_jtag.sh
 ```
 
-Use `./tools/pi/flash_or_debug_s3.sh` as the default S3 procedure. It first runs a normal build/erase/upload/startup check with no GPIO-JTAG preparation and does not force Pi GPIO3/GPIO4 low. Only if that plain path fails does it retry the S3 watchdog reset, attempt a fallback reflash, and then enter the GPIO-JTAG debugger flow.
+Use `./tools/pi/flash_or_debug_s3.sh` as the default S3 procedure. It first runs a normal build/erase/upload/startup check with no GPIO-JTAG preparation. If that plain path fails and you move into debugging, the script now forces Pi `GPIO3` and `GPIO4` low before reset, uses the Raspberry Pi GPIO-JTAG path, and does not rely on the ESP32-S3 USB JTAG path for debugging.
 
-The proved working attach path uses:
+The proved working USB-debug attach path uses:
 
 - Pi `GPIO3` low before board reset
 - Pi `GPIO4` low before board reset
@@ -347,7 +347,7 @@ pinctrl get 4
 pinctrl get 3
 ```
 
-- Start with the repo helper rather than the built-in USB JTAG config:
+- For USB-path debugging, use the repo helper rather than the ESP32-S3 built-in USB JTAG path:
 
 ```bash
 ./tools/pi/flash_or_debug_s3.sh

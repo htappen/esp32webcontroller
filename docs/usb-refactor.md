@@ -98,10 +98,146 @@ Current status:
 - it handles the minimum vendor control requests needed for initial Linux/XInput host acceptance attempts
 - it is not yet validated end to end against a Linux host, so descriptor/control quirks may still need iteration after real host testing
 - Pi-side flashing no longer requires a manual reset-button press after upload; the tooling now uses `esptool --after watchdog_reset` for `ESP32-S3`
-- a diagnostic `CONTROLLER_USB_XINPUT_DEFER_BEGIN=1` mode now exists so `usb_xinput` can boot without calling `USB.begin()` and stay on the Espressif `USB-Serial/JTAG` path while the built-in JTAG debugger is attached
-- the temporary serial/ROM breadcrumb instrumentation used during early narrowing has been removed; the active debug path is now Pi-side OpenOCD + `xtensa-esp32s3-elf-gdb` against the S3 built-in JTAG interface
-- Pi environment bootstrap now installs debugger prerequisites (`openocd`, `gdb`) and validates the built-in JTAG board config so debugger attach can be part of the normal Pi workflow
-- debugger attach on the Pi is now proven on the real board; the non-deferred `usb_xinput` image still drops off USB/JTAG as soon as execution resumes, while the deferred image stays attached long enough for repeatable post-boot inspection
+- a diagnostic `CONTROLLER_USB_XINPUT_DEFER_BEGIN=1` mode now exists so `usb_xinput` can boot without calling `USB.begin()` and stay on the Espressif `USB-Serial/JTAG` serial path while debug setup is prepared
+- the temporary serial/ROM breadcrumb instrumentation used during early narrowing has been removed; the active debug path is now Pi-side OpenOCD + `xtensa-esp32s3-elf-gdb` over Raspberry Pi GPIO-JTAG rather than the ESP32-S3 built-in USB JTAG interface
+- Pi environment bootstrap now installs debugger prerequisites (`openocd`, `gdb`) and validates the Raspberry Pi GPIO-JTAG board config so debugger attach can be part of the normal Pi workflow
+- debugger attach on the Pi is now proven on the real board; USB-path debugging now assumes Pi `GPIO3` low at reset time and uses the GPIO-JTAG route instead of relying on built-in USB JTAG
+- enumeration and Linux host binding now work on the Pi for the normal `usb_xinput` image:
+  - `lsusb` shows `045e:028e`
+  - Linux binds `xpad`
+  - the device appears as `Microsoft X-Box 360 pad` with `/dev/input/event4` and `/dev/input/js0`
+- the remaining blocker has moved past enumeration:
+  - WebSocket packets reach the firmware and the `wsPacketsReceived` / `wsPacketsApplied` counters advance
+  - but the Pi-side USB E2E flow still sees no runtime input events from `xpad` for button and axis packets
+  - the active bug is now "reports appear to be accepted by firmware but are not surfacing as host-visible Xbox input events"
+- the latest rerun still reproduces that exact boundary on hardware:
+  - neutral packet assertions pass
+  - `A=1` still fails with no `BTN_SOUTH` event on `/dev/input/event4`
+  - so the host-visible runtime report path is still the decisive bug, not device discovery or WebSocket ingress
+- the flash workflow has now been adjusted for that debug loop:
+  - `tools/upload_firmware.sh` supports `--skip-uploadfs`
+  - `tools/pi/wait_for_acm_then_upload.sh` now defaults to skipping `uploadfs` so the first ACM appearance can be used for a single immediate firmware upload rather than a two-open `uploadfs` + `upload` sequence
+  - the repo now also has a prebuilt direct-flash route for the short ACM window: `tools/write_prebuilt_firmware.sh` and `tools/pi/wait_for_acm_then_write_prebuilt_firmware.sh`
+
+### Current Comparison Findings
+
+The current `usb_switch` path and `usb_xinput` path are useful contrasts because they fail at very different layers.
+
+`usb_switch` today:
+
+- uses Arduino's `USBHID` stack rather than a custom TinyUSB class driver
+- has one compact HID report descriptor and one report struct
+- converts the neutral `HostInputReport` directly into a report and sends it through `USBHID::SendReport()`
+- relies on standard HID host behavior instead of vendor control/auth semantics
+
+`usb_xinput` today:
+
+- owns a raw Xbox 360 device descriptor and a multi-interface configuration descriptor
+- owns TinyUSB descriptor callbacks, class-driver registration, endpoint opening, vendor control handling, and interrupt transfers
+- tracks endpoint state manually in `XInputDriverState`
+- queues reports manually with `usbd_edpt_xfer()`
+
+That comparison narrows likely fault classes.
+
+The current `usb_xinput` implementation is no longer failing at:
+
+- device descriptor acceptance
+- configuration descriptor acceptance
+- Linux `xpad` binding
+- basic host recognition as an Xbox 360-class device
+
+The remaining likely fault classes are:
+
+1. Runtime report format mismatch.
+   - The 20-byte `XInputControlReport` may still differ from what the Linux `xpad` path expects on the interrupt IN endpoint, even if enumeration succeeds.
+
+2. Interrupt transfer scheduling or readiness mismatch.
+   - `send()` only queues through `xinputStartReportTransfer()` when `interfaces_opened`, `tud_ready()`, and `usbd_edpt_ready()` all line up. A state or timing issue here could make reports appear accepted at the firmware layer but never reach the host.
+
+3. Missing or incomplete handling of host OUT-side initialization.
+   - Linux logs `unable to receive magic message: -32`, which is a strong sign that some expected OUT/control exchange is still not handled the way `xpad` expects after bind.
+
+4. Endpoint semantics mismatch versus the upstream reference.
+   - The current endpoint-open and transfer logic is self-contained, but not yet proven to be endpoint-for-endpoint equivalent to a known-good `gp2040-ce` XInput implementation.
+
+### Active Debug Plan
+
+The debugging work should now focus on runtime report delivery, not on raw enumeration.
+
+#### Phase 1: Tighten the runtime comparison
+
+1. Compare the current `usb_xinput` runtime path against the `gp2040-ce` reference specifically at:
+   - report struct layout
+   - interrupt IN transfer size and cadence
+   - host OUT / rumble / init packet handling
+   - any state gating before the first IN report is allowed
+
+2. Compare the current `usb_xinput` send path against the simpler `usb_switch` path to keep the firmware-side questions concrete:
+   - when does `send()` return true
+   - what conditions suppress a transfer
+   - what state indicates the host is truly ready for runtime input
+
+3. Keep the Pi E2E runner as the truth source for regressions:
+   - USB enumeration and `xpad` bind must still pass
+   - WebSocket debug counters must still advance
+   - the next pass criterion is real `event4` / `js0` input, not only status counters
+   - the current known-failing assertion remains `BTN_SOUTH` for the `A=1` packet, which makes it the fastest regression check after each reflash
+
+#### Phase 2: Instrument the runtime delivery edge
+
+Add targeted temporary instrumentation only around the decisive runtime points:
+
+1. In `UsbXInputGamepadBridge::send()`:
+   - log whether `started_`, `interfaces_opened`, `tud_ready()`, and `usbd_edpt_ready()` are true
+   - log when `report_dirty` is set and when `xinputStartReportTransfer()` returns false
+
+2. In `xinputStartReportTransfer()`:
+   - log endpoint address, packet length, and whether `usbd_edpt_xfer()` succeeds
+
+3. In `xinputDriverXfer()`:
+   - log IN transfer completions, failures, and requeue behavior
+   - log OUT transfers with endpoint address and length so the host-side initialization sequence becomes visible
+
+The goal is to answer one narrow question:
+
+- are we failing to queue runtime IN reports at all, or are we queueing them and the host is discarding them?
+
+#### Phase 3: Validate host-init behavior
+
+Use the Pi host logs together with firmware instrumentation to map the first few seconds after bind:
+
+1. Capture fresh `dmesg` around the first post-bind packet send.
+2. Correlate that with firmware-side OUT/control logs.
+3. Verify whether Linux sends the same initialization or "magic message" pattern every run.
+4. Implement only the minimum additional OUT/control behavior needed to clear that host-init mismatch before broadening the driver.
+
+#### Phase 4: Optional interactive GPIO-JTAG debugging
+
+If print-style instrumentation still leaves ambiguity, switch to the already-proven Pi GPIO-JTAG path.
+
+Use interactive GPIO-JTAG when we need to inspect:
+
+- `g_driver_state.report_in_flight`
+- `g_driver_state.report_dirty`
+- endpoint addresses in `g_driver_state`
+- whether `xinputDriverXfer()` is reached for the control IN endpoint after a packet send
+- whether the send path is blocked in `usbd_edpt_ready()` or failing inside `usbd_edpt_xfer()`
+
+Recommended interactive JTAG flow:
+
+1. Flash the normal `usb_xinput` image first with no debugger attached.
+2. Only if runtime report delivery still fails, prepare the Pi GPIO-JTAG strap path.
+3. Attach OpenOCD + `xtensa-esp32s3-elf-gdb` over the Raspberry Pi GPIO wiring.
+4. Break on:
+   - `UsbXInputGamepadBridge::send`
+   - `xinputStartReportTransfer`
+   - `xinputDriverXfer`
+5. Inspect whether a packet send results in:
+   - a queued IN transfer
+   - a completed IN transfer callback
+   - a requeue or failure path
+
+This is the highest-signal interactive option because the board now survives normal `usb_xinput` startup and binds on the host; the ambiguity is at runtime transfer behavior, not early boot.
 
 Each transport owns:
 
@@ -256,8 +392,17 @@ This means the USB E2E test becomes a two-host flow, but the high-level scenario
 6. Add `UsbSwitchHostTransport` on `ESP32-S3`.
 7. [DONE] For `UsbPcHostTransport` / `usb_xinput`, port the first `gp2040-ce`-style custom TinyUSB class-driver skeleton instead of continuing on descriptor-only tuning.
 8. [IN PROGRESS] Reuse the upstream raw descriptor tables, report struct/layout, string-descriptor helper, and endpoint-open/control behavior where practical, but adapt them to this repo's transport layer and ESP32-S3 runtime.
-9. [IN PROGRESS] Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact; the runner exists, but the new custom driver still needs real host validation.
+   - Enumeration and `xpad` binding now work, so the next comparison focus is runtime interrupt-report behavior and host OUT/init handling rather than raw descriptor acceptance.
+9. [IN PROGRESS] Add the USB host-probe-based E2E runner while keeping the existing BLE E2E route intact.
+   - The Pi-side USB runner now verifies:
+     - `045e:028e` enumeration
+     - `xpad` binding
+     - `event4` / `js0` visibility
+     - WebSocket packet counters advancing
+   - It does not pass end to end yet because runtime Xbox input events are still missing from the Linux host path.
 10. [DONE] Use temporary deferred-mode breadcrumbs only long enough to confirm that the app reaches startup far enough to justify switching from print debugging to JTAG debugging, then remove the temporary prints.
+11. [NEXT] Instrument and debug the runtime XInput report-delivery path.
+12. [OPTIONAL] Use interactive Raspberry Pi GPIO-JTAG debugging if transfer instrumentation does not isolate the runtime failure cleanly enough.
 11. [IN PROGRESS] Switch the active workflow to Pi-side OpenOCD + GDB on the ESP32-S3 built-in JTAG path.
 
 Current result:

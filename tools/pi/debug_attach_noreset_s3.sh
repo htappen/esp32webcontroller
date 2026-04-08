@@ -42,6 +42,7 @@ if [[ ! -f "${ELF_PATH}" ]]; then
   exit 1
 fi
 
+printf '[pi-debug] using Raspberry Pi GPIO-JTAG and forcing Pi GPIO3/GPIO4 low before reset\n'
 bash "${ROOT_DIR}/tools/pi/prepare_s3_gpio_jtag.sh"
 bash "${ROOT_DIR}/tools/pi/reset_s3_watchdog_if_present.sh"
 "${ROOT_DIR}/tools/pi/start_openocd_s3_gpio_jtag.sh"
