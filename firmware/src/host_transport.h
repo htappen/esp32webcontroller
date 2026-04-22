@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #include "input_mapper.h"
 
 struct HostStatus {
@@ -11,6 +13,15 @@ struct HostStatus {
   bool supports_pairing = false;
   bool pairing_enabled = false;
   bool advertising = false;
+  bool usb_interfaces_opened = false;
+  bool usb_report_in_flight = false;
+  bool usb_report_dirty = false;
+  uint8_t usb_control_in_ep = 0;
+  uint32_t usb_send_attempts = 0;
+  uint32_t usb_send_successes = 0;
+  uint32_t usb_in_completions = 0;
+  uint32_t usb_in_failures = 0;
+  uint32_t usb_out_completions = 0;
 };
 
 class HostTransport {

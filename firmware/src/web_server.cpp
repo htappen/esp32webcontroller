@@ -96,6 +96,15 @@ bool WebServerBridge::begin() {
     doc["host"]["connected"] = hs.connected;
     doc["host"]["supportsPairing"] = hs.supports_pairing;
     doc["host"]["pairingEnabled"] = hs.pairing_enabled;
+    doc["host"]["debug"]["usbInterfacesOpened"] = hs.usb_interfaces_opened;
+    doc["host"]["debug"]["usbReportInFlight"] = hs.usb_report_in_flight;
+    doc["host"]["debug"]["usbReportDirty"] = hs.usb_report_dirty;
+    doc["host"]["debug"]["usbControlInEp"] = hs.usb_control_in_ep;
+    doc["host"]["debug"]["usbSendAttempts"] = hs.usb_send_attempts;
+    doc["host"]["debug"]["usbSendSuccesses"] = hs.usb_send_successes;
+    doc["host"]["debug"]["usbInCompletions"] = hs.usb_in_completions;
+    doc["host"]["debug"]["usbInFailures"] = hs.usb_in_failures;
+    doc["host"]["debug"]["usbOutCompletions"] = hs.usb_out_completions;
     doc["controller"]["wsConnected"] = ws_client_connected_;
     doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
     doc["controller"]["seq"] = controller.seq;
@@ -165,6 +174,12 @@ bool WebServerBridge::begin() {
                                                  : "{\"ok\":true,\"pairingEnabled\":false}");
   });
 
+  g_http.on("/api/device/reboot", HTTP_POST, [this]() {
+    reboot_requested_ = true;
+    reboot_requested_ms_ = millis();
+    g_http.send(202, "application/json", "{\"ok\":true,\"status\":\"rebooting\"}");
+  });
+
   g_http.on("/", HTTP_GET, []() {
     File f = LittleFS.open("/index.html", "r");
     if (!f) {
@@ -226,6 +241,10 @@ void WebServerBridge::loop() {
       ws_client_connected_ = false;
       resetControllerState();
     }
+  }
+
+  if (reboot_requested_ && millis() - reboot_requested_ms_ > 250) {
+    ESP.restart();
   }
 }
 

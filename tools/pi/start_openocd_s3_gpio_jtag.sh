@@ -42,6 +42,9 @@ while (( SECONDS < deadline )); do
   echo "${openocd_pid}" >"${OPENOCD_PIDFILE}"
 
   for _ in $(seq 1 20); do
+    if grep -Eq "JTAG scan chain interrogation failed|IR capture error|Unexpected OCD_ID|Examination failed|Target not examined" "${OPENOCD_LOG}" 2>/dev/null; then
+      break
+    fi
     if grep -q "Listening on port 3333" "${OPENOCD_LOG}" 2>/dev/null; then
       log "OpenOCD ready on gdb port 3333"
       exit 0
@@ -52,6 +55,9 @@ while (( SECONDS < deadline )); do
     sleep 0.5
   done
 
+  if kill -0 "${openocd_pid}" >/dev/null 2>&1; then
+    sudo kill "${openocd_pid}" >/dev/null 2>&1 || true
+  fi
   rm -f "${OPENOCD_PIDFILE}"
   log "OpenOCD did not attach yet; retrying"
   sleep "${OPENOCD_RETRY_INTERVAL_SECONDS}"

@@ -32,4 +32,6 @@ class WebServerBridge {
   bool mdns_started_ = false;
   NetworkMode mdns_mode_ = NetworkMode::kAp;
   IPAddress mdns_ip_;
+  bool reboot_requested_ = false;
+  uint32_t reboot_requested_ms_ = 0;
 };

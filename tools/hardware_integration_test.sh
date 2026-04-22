@@ -57,12 +57,35 @@ while [[ $# -gt 0 ]]; do
 done
 
 PORT="$(resolve_serial_port "${PORT}" || true)"
+BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
+
+try_s3_recovery() {
+  if [[ "${BOARD_NAME}" != "s3" ]]; then
+    return 1
+  fi
+  if [[ "${CONTROLLER_SKIP_S3_RECOVERY:-0}" == "1" ]]; then
+    log "S3 no-button recovery disabled by CONTROLLER_SKIP_S3_RECOVERY=1"
+    return 1
+  fi
+  if [[ ! -x "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh" ]]; then
+    return 1
+  fi
+
+  log "trying S3 no-button recovery before hardware update"
+  CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh"
+}
+
 if [[ -z "${PORT}" ]]; then
-  fail "no serial port detected; pass a port or set PIO_UPLOAD_PORT"
+  log "no serial port detected"
+  if try_s3_recovery; then
+    PORT="$(resolve_serial_port "" || true)"
+  fi
+  if [[ -z "${PORT}" ]]; then
+    fail "no serial port detected after recovery; pass a port or set PIO_UPLOAD_PORT"
+  fi
 fi
 
 activate_platformio_env
-BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
 ENV_NAME="${PIO_ENV:-$(resolve_pio_env "${BOARD_NAME}")}"
 set_sta_seed_credentials "${STA_SSID_OVERRIDE}" "${STA_PASS_OVERRIDE}"
 prepare_controller_identity "test" "${DEVICE_UUID}"

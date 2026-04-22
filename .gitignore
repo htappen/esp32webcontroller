@@ -12,6 +12,7 @@ node_modules/
 .venv/
 .platformio/
 __pycache__
+*.gdb
 
 # Logs
 *.log
