@@ -7,9 +7,19 @@
   </head>
   <body>
     <main class="app-shell">
-      <button id="config-open" class="config-trigger" type="button" aria-label="Open configuration">
-        <span class="visually-hidden">Open configuration</span>
-      </button>
+      <div class="top-controls" aria-label="Controller status and settings">
+        <div
+          id="controller-slot-badge"
+          class="controller-slot-badge controller-slot-badge-disconnected"
+          aria-live="polite"
+          aria-label="Controller not connected"
+        >
+          <span id="controller-slot-label">?</span>
+        </div>
+        <button id="config-open" class="config-trigger" type="button" aria-label="Open configuration">
+          <span class="visually-hidden">Open configuration</span>
+        </button>
+      </div>
 
       <section id="controller-stage" class="controller-stage" aria-label="Gamepad controller">
         <div id="gpad-display-left" class="gamepad-half gamepad-half-left"></div>

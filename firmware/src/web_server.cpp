@@ -51,11 +51,12 @@ const char* mime_type_for_path(const String& path) {
 
 }  // namespace
 
-WebServerBridge::WebServerBridge(NetworkManager* network, HostConnectionManager* host, StateStore* state)
-    : network_(network), host_(host), state_(state) {}
+WebServerBridge::WebServerBridge(NetworkManager* network, HostConnectionManager* host,
+                                 ControllerSessionManager* sessions)
+    : network_(network), host_(host), sessions_(sessions) {}
 
 bool WebServerBridge::begin() {
-  if (network_ == nullptr || host_ == nullptr || state_ == nullptr) {
+  if (network_ == nullptr || host_ == nullptr || sessions_ == nullptr) {
     return false;
   }
   LittleFS.begin(true);
@@ -65,7 +66,7 @@ bool WebServerBridge::begin() {
     JsonDocument doc;
     const NetworkStatus ns = network_->status();
     const HostStatus hs = host_->status();
-    const ControllerState controller = state_->snapshot();
+    const ControllerFleetSnapshot fleet = sessions_->snapshot(millis());
 
     doc["network"]["mode"] = mode_to_string(ns.mode);
     doc["network"]["connectionState"] = connection_state_to_string(ns.connection_state);
@@ -105,20 +106,21 @@ bool WebServerBridge::begin() {
     doc["host"]["debug"]["usbInCompletions"] = hs.usb_in_completions;
     doc["host"]["debug"]["usbInFailures"] = hs.usb_in_failures;
     doc["host"]["debug"]["usbOutCompletions"] = hs.usb_out_completions;
-    doc["controller"]["wsConnected"] = ws_client_connected_;
-    doc["controller"]["lastPacketAgeMs"] = ws_last_packet_ms_ == 0 ? 0 : millis() - ws_last_packet_ms_;
-    doc["controller"]["seq"] = controller.seq;
-    doc["controller"]["t"] = controller.t;
-    doc["controller"]["btn"]["a"] = controller.btn.a;
-    doc["controller"]["btn"]["b"] = controller.btn.b;
-    doc["controller"]["btn"]["x"] = controller.btn.x;
-    doc["controller"]["btn"]["y"] = controller.btn.y;
-    doc["controller"]["ax"]["lx"] = controller.ax.lx;
-    doc["controller"]["ax"]["ly"] = controller.ax.ly;
-    doc["controller"]["ax"]["rx"] = controller.ax.rx;
-    doc["controller"]["ax"]["ry"] = controller.ax.ry;
-    doc["controller"]["ax"]["lt"] = controller.ax.lt;
-    doc["controller"]["ax"]["rt"] = controller.ax.rt;
+    doc["controller"]["wsConnected"] = fleet.ws_connected;
+    doc["controller"]["maxSlots"] = fleet.max_slots;
+    doc["controller"]["assignedSlots"] = fleet.assigned_slots;
+    doc["controller"]["activeSlots"] = fleet.active_slots;
+    JsonArray clients = doc["controller"]["clients"].to<JsonArray>();
+    for (uint8_t i = 0; i < fleet.max_slots; ++i) {
+      const ControllerSlotSnapshot& slot = fleet.slots[i];
+      JsonObject client = clients.add<JsonObject>();
+      client["slot"] = slot.slot_number;
+      client["assigned"] = slot.assigned;
+      client["connected"] = slot.connected;
+      client["reserved"] = slot.reserved;
+      client["active"] = slot.active;
+      client["lastPacketAgeMs"] = slot.last_packet_age_ms;
+    }
     doc["controller"]["debug"]["wsPacketsReceived"] = ws_packets_received_;
     doc["controller"]["debug"]["wsPacketsApplied"] = ws_packets_applied_;
     doc["controller"]["debug"]["wsPacketsRejected"] = ws_packets_rejected_;
@@ -228,27 +230,22 @@ void WebServerBridge::loop() {
   g_ws.loop();
   network_->loop();
   syncMdns(network_->status());
+  const uint32_t now = millis();
+  sessions_->evictExpiredReservations(now);
 
-  if (ws_client_connected_ && ws_last_packet_ms_ > 0) {
-    const uint32_t now = millis();
-    if (now - ws_last_packet_ms_ > config::kWsTimeoutMs) {
-      ws_client_connected_ = false;
-      resetControllerState();
-    }
+  uint8_t timed_out_clients[config::kMaxControllerSlots] = {};
+  const uint8_t timed_out_count = sessions_->collectTimedOutClients(now, timed_out_clients, config::kMaxControllerSlots);
+  for (uint8_t i = 0; i < timed_out_count && i < config::kMaxControllerSlots; ++i) {
+    g_ws.disconnect(timed_out_clients[i]);
   }
-
 }
 
 void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
-      ws_client_connected_ = true;
-      ws_last_packet_ms_ = millis();
       break;
     case WStype_DISCONNECTED:
-      ws_client_connected_ = false;
-      ws_last_packet_ms_ = 0;
-      resetControllerState();
+      sessions_->disconnectClient(num, millis());
       break;
     case WStype_TEXT: {
       if (payload == nullptr || length == 0) {
@@ -261,14 +258,48 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
         message += static_cast<char>(payload[i]);
       }
 
-      ControllerState next;
-      if (!ws_parser_.parseJson(message.c_str(), state_->snapshot(), &next)) {
+      const uint32_t now = millis();
+      WsHelloPacket hello;
+      if (ws_parser_.parseHello(message.c_str(), &hello)) {
+        const ControllerBindOutcome outcome = sessions_->bindClient(num, hello.client_id, now);
+        switch (outcome.result) {
+          case ControllerBindResult::kAssigned:
+            sendSessionMessage(num, true, outcome.slot_number, "assigned");
+            if (outcome.previous_ws_client_num != 0xff && outcome.previous_ws_client_num != num) {
+              g_ws.disconnect(outcome.previous_ws_client_num);
+            }
+            break;
+          case ControllerBindResult::kReassigned:
+            sendSessionMessage(num, true, outcome.slot_number, "reassigned");
+            if (outcome.previous_ws_client_num != 0xff && outcome.previous_ws_client_num != num) {
+              g_ws.disconnect(outcome.previous_ws_client_num);
+            }
+            break;
+          case ControllerBindResult::kFull:
+            sendSessionMessage(num, false, 0, "full");
+            g_ws.disconnect(num);
+            break;
+          case ControllerBindResult::kInvalidClientId:
+            sendSessionMessage(num, false, 0, "invalid_client_id");
+            g_ws.disconnect(num);
+            break;
+        }
+        return;
+      }
+
+      ControllerState base;
+      if (!sessions_->getStateForClient(num, &base)) {
         ++ws_packets_rejected_;
         return;
       }
-      next.last_update_ms = millis();
-      if (state_->apply(next)) {
-        ws_last_packet_ms_ = next.last_update_ms;
+
+      ControllerState next;
+      if (!ws_parser_.parseJson(message.c_str(), base, &next)) {
+        ++ws_packets_rejected_;
+        return;
+      }
+      next.last_update_ms = now;
+      if (sessions_->applyStateForClient(num, next, now)) {
         ++ws_packets_applied_;
       } else {
         ++ws_packets_rejected_;
@@ -288,15 +319,18 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
   (void)num;
 }
 
-void WebServerBridge::resetControllerState() {
-  if (!state_->reset()) {
-    return;
+void WebServerBridge::sendSessionMessage(uint8_t num, bool connected, uint8_t slot_number, const char* reason) {
+  JsonDocument doc;
+  doc["type"] = "session";
+  doc["connected"] = connected;
+  if (slot_number != 0) {
+    doc["slot"] = slot_number;
   }
-  sendNeutralReport();
-}
-
-void WebServerBridge::sendNeutralReport() {
-  host_->sendReport(InputMapper::map(state_->snapshot()));
+  doc["maxSlots"] = sessions_->capacity();
+  doc["reason"] = reason;
+  String payload;
+  serializeJson(doc, payload);
+  g_ws.sendTXT(num, payload);
 }
 
 void WebServerBridge::syncMdns(const NetworkStatus& status) {

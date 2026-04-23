@@ -93,6 +93,14 @@ bool HostConnectionManager::sendReport(const HostInputReport& report) {
   return transport_->send(report);
 }
 
+bool HostConnectionManager::sendSlotReports(const HostInputReport* reports, uint8_t report_count,
+                                            uint32_t active_slot_mask) {
+  if (transport_ == nullptr) {
+    return false;
+  }
+  return transport_->sendSlots(reports, report_count, active_slot_mask);
+}
+
 HostStatus HostConnectionManager::status() const {
   return status_;
 }

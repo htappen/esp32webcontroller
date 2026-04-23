@@ -49,7 +49,8 @@ function formatHostStatus(host, controller) {
   if (transport === 'usb') {
     const modeLabel = variant === 'switch' ? 'USB-Switch' : variant === 'pc' ? 'USB-PC' : 'USB';
     const connection = host.connected ? 'connected' : (host.ready ? 'ready' : 'starting');
-    return `${host.displayName || modeLabel} ${connection}  Host mode ${modeLabel}  Browser ${browserState}`;
+    const slots = Number.isFinite(controller.activeSlots) ? controller.activeSlots : 0;
+    return `${host.displayName || modeLabel} ${connection}  Host mode ${modeLabel}  Browser ${browserState}  Active controllers ${slots}`;
   }
 
   return `${host.displayName || host.bleName || 'Bluetooth host'} ${host.connected ? 'connected' : 'ready'}  Bluetooth advertising ${host.advertising ? 'on' : 'off'}  Browser ${browserState}`;
@@ -65,6 +66,8 @@ export class PageStateController {
     this.hostActionStatusEl = opts.hostActionStatusEl;
     this.deviceNameEl = opts.deviceNameEl;
     this.deviceHostnameEl = opts.deviceHostnameEl;
+    this.controllerSlotBadgeEl = opts.controllerSlotBadgeEl;
+    this.controllerSlotLabelEl = opts.controllerSlotLabelEl;
     this.staForm = opts.staForm;
     this.forgetHostEl = opts.forgetHostEl;
     this.layoutSelectEl = opts.layoutSelectEl;
@@ -73,6 +76,7 @@ export class PageStateController {
     this.configBackdropEl = opts.configBackdropEl;
     this.configModalEl = opts.configModalEl;
     this.gamepadController = opts.gamepadController;
+    this.controllerSession = { connected: false, slot: null, reason: 'disconnected' };
   }
 
   async start() {
@@ -112,6 +116,45 @@ export class PageStateController {
 
   setTransportStatus(message) {
     this.transportStatusEl.textContent = message;
+  }
+
+  setControllerSession(session) {
+    this.controllerSession = {
+      connected: Boolean(session?.connected),
+      slot: Number.isFinite(session?.slot) ? session.slot : null,
+      reason: session?.reason || 'unknown',
+    };
+    this.renderControllerBadge();
+  }
+
+  renderControllerBadge() {
+    if (!this.controllerSlotBadgeEl || !this.controllerSlotLabelEl) {
+      return;
+    }
+
+    this.controllerSlotBadgeEl.classList.remove(
+      'controller-slot-badge-connected',
+      'controller-slot-badge-disconnected',
+      'controller-slot-badge-error',
+    );
+
+    if (this.controllerSession.connected && this.controllerSession.slot) {
+      this.controllerSlotBadgeEl.classList.add('controller-slot-badge-connected');
+      this.controllerSlotBadgeEl.setAttribute('aria-label', `Connected as controller ${this.controllerSession.slot}`);
+      this.controllerSlotLabelEl.textContent = String(this.controllerSession.slot);
+      return;
+    }
+
+    if (this.controllerSession.reason === 'full') {
+      this.controllerSlotBadgeEl.classList.add('controller-slot-badge-error');
+      this.controllerSlotBadgeEl.setAttribute('aria-label', 'Controller slots full');
+      this.controllerSlotLabelEl.textContent = '!';
+      return;
+    }
+
+    this.controllerSlotBadgeEl.classList.add('controller-slot-badge-disconnected');
+    this.controllerSlotBadgeEl.setAttribute('aria-label', 'Controller not connected');
+    this.controllerSlotLabelEl.textContent = '?';
   }
 
   async postJson(url, payload) {
@@ -167,6 +210,7 @@ export class PageStateController {
     this.hostActionStatusEl.textContent = pairingSupported
       ? 'Remove the currently connected BLE host bond so another device can pair.'
       : 'BLE-only pairing controls are hidden while the host transport is wired USB.';
+    this.renderControllerBadge();
   }
 
   async refreshStatus() {

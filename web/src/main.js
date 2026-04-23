@@ -15,6 +15,8 @@ pageController = new PageStateController({
   hostActionStatusEl: document.getElementById('host-action-status'),
   deviceNameEl: document.getElementById('device-name'),
   deviceHostnameEl: document.getElementById('device-hostname'),
+  controllerSlotBadgeEl: document.getElementById('controller-slot-badge'),
+  controllerSlotLabelEl: document.getElementById('controller-slot-label'),
   staForm: document.getElementById('sta-form'),
   forgetHostEl: document.getElementById('forget-host'),
   layoutSelectEl: document.getElementById('layout-select'),
@@ -28,6 +30,7 @@ pageController = new PageStateController({
     rightEl: document.getElementById('gpad-display-right'),
     wsUrl: runtimeConfig.wsUrl || `ws://${location.hostname}:81`,
     onTransportStatus: (message) => pageController.setTransportStatus(message),
+    onSessionStatus: (session) => pageController.setControllerSession(session),
   }),
 });
 

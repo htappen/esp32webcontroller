@@ -28,6 +28,52 @@ def make_close_frame() -> bytes:
     return bytes([0x88, 0x80, 0, 0, 0, 0])
 
 
+def read_exact(sock: socket.socket, count: int) -> bytes:
+    payload = b""
+    while len(payload) < count:
+        chunk = sock.recv(count - len(payload))
+        if not chunk:
+            raise RuntimeError("websocket closed while reading frame")
+        payload += chunk
+    return payload
+
+
+def read_frame(sock: socket.socket) -> tuple[int, bytes]:
+    header = read_exact(sock, 2)
+    first = header[0]
+    second = header[1]
+    opcode = first & 0x0F
+    masked = (second & 0x80) != 0
+    length = second & 0x7F
+    if length == 126:
+        length = int.from_bytes(read_exact(sock, 2), "big")
+    elif length == 127:
+        length = int.from_bytes(read_exact(sock, 8), "big")
+
+    mask = read_exact(sock, 4) if masked else b""
+    payload = read_exact(sock, length)
+    if masked:
+        payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+    return opcode, payload
+
+
+def wait_for_session_assignment(sock: socket.socket, timeout_seconds: float) -> dict:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        sock.settimeout(remaining)
+        opcode, payload = read_frame(sock)
+        if opcode != 1:
+            continue
+        message = json.loads(payload.decode("utf-8"))
+        if message.get("type") != "session":
+            continue
+        if not message.get("connected"):
+            raise RuntimeError(f"controller session rejected: {message}")
+        return message
+    raise RuntimeError("timed out waiting for controller session assignment")
+
+
 def open_websocket(url: str) -> socket.socket:
     parsed = urlparse(url)
     host = parsed.hostname or "127.0.0.1"
@@ -109,6 +155,8 @@ def main() -> int:
     parser.add_argument("--packet-file")
     parser.add_argument("--seq", type=int, default=1)
     parser.add_argument("--hold-open", type=float, default=0.0)
+    parser.add_argument("--client-id", default="pi-test-client")
+    parser.add_argument("--hello-timeout", type=float, default=3.0)
     args = parser.parse_args()
 
     if args.packet_json and args.packet_file:
@@ -127,6 +175,13 @@ def main() -> int:
 
     sock = open_websocket(args.url)
     try:
+        hello = {
+            "type": "hello",
+            "clientId": args.client_id,
+            "protocolVersion": 2,
+        }
+        sock.sendall(make_text_frame(json.dumps(hello, separators=(",", ":")).encode("utf-8")))
+        wait_for_session_assignment(sock, args.hello_timeout)
         sock.sendall(make_text_frame(json.dumps(packet, separators=(",", ":")).encode("utf-8")))
         if args.hold_open > 0:
             time.sleep(args.hold_open)

@@ -129,6 +129,14 @@ The checked-in Pi test harness uses a repo-managed Python venv on the Pi instead
 
 That venv is created with `--system-site-packages` so the repo-managed environment can still use apt-provided BlueZ bindings such as `dbus` and `gi` while keeping the repo's Python entrypoints inside one venv.
 
+When invoking helpers manually on the Pi, prefer the repo venv interpreter directly:
+
+```bash
+~/controller-pi-e2e/tools/pi/.venv-pi/bin/python
+```
+
+This avoids shell/SSH differences where `source .../activate` may not apply to the command that actually runs.
+
 ## Step 6: Enable Required Services
 
 Run on the Pi:
@@ -158,6 +166,14 @@ git submodule update --init --recursive
 The Pi and ChromeOS machine should use the same repository branch when debugging cross-machine test failures.
 
 The top-level `./tools/pi/run_remote_e2e.sh` script stages the current tracked repo snapshot from ChromeOS to the Pi before a test run, so the Pi does not need a perfectly up-to-date manual clone for every firmware change. It still needs the one-time dependency setup from `./tools/setup_env.sh`.
+
+If you are running Pi-side flash, debug, or validation commands manually instead of `./tools/pi/run_remote_e2e.sh`, sync the current repo contents to `~/controller-pi-e2e` first. A working pattern from ChromeOS is:
+
+```bash
+tar -C /home/htappen/controller --exclude=.git --exclude=.venv --exclude=.platformio --exclude=web/node_modules --exclude=third_party/virtual-gamepad-lib/node_modules -cf - . | ssh controller-pi 'cd /home/controller/controller-pi-e2e && tar -xf -'
+```
+
+Do not rely on an older Pi checkout when firmware, web assets, or Pi-side test helpers changed locally.
 
 ## Step 8: Verify ChromeOS To Pi SSH Settings
 
@@ -215,6 +231,7 @@ For `usb_xinput` validation, also confirm:
 1. The ESP32-S3 is reset into normal firmware mode, not ROM download mode.
 2. `lsusb` shows the expected gamepad VID/PID when the `usb_xinput` firmware is flashed, rather than only `303a:1001`.
 3. The Pi-side USB path is connected to the ESP32-S3 OTG/device port, not only to a serial/JTAG connector.
+4. Linux enumerates four XInput controller interfaces for the multi-controller firmware, not just one.
 
 ## Step 11: Wire Raspberry Pi GPIO JTAG For ESP32-S3
 

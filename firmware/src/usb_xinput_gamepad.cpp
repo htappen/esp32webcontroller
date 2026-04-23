@@ -20,24 +20,18 @@ namespace {
 constexpr uint16_t kXbox360Vid = 0x045e;
 constexpr uint16_t kXbox360Pid = 0x028e;
 constexpr uint8_t kVendorClass = 0xff;
-constexpr uint8_t kVendorSubClass = 0xff;
-constexpr uint8_t kVendorProtocol = 0xff;
-constexpr uint8_t kInterfaceNumber = 0;
-constexpr uint8_t kControlPacketLength = 20;
-constexpr uint8_t kFeedbackPacketLength = 8;
+constexpr uint8_t kXInputSubClass = 0x5d;
+constexpr uint8_t kXInputProtocol = 0x01;
 constexpr uint8_t kEndpointPacketSize = 32;
 constexpr uint8_t kEndpointZeroPacketSize = CFG_TUD_ENDPOINT0_SIZE;
-constexpr uint16_t kXbox360ConfigurationTotalLength = 0x0099;
 constexpr uint16_t kXbox360BcdDevice = 0x0114;
-constexpr uint8_t kUsbAttributesBusPoweredRemoteWakeup = 0xa0;
-constexpr uint16_t kUsbPowerMilliAmps = 500;
-constexpr uint8_t kInterfaceCount = 4;
 constexpr uint8_t kManufacturerStringIndex = 0x01;
 constexpr uint8_t kProductStringIndex = 0x02;
 constexpr uint8_t kSerialStringIndex = 0x03;
-constexpr uint8_t kSecurityMethodStringIndex = 0x04;
 constexpr uint8_t kLanguageStringIndex = 0x00;
-constexpr uint16_t kXbox360InterfaceDescriptorLength = kXbox360ConfigurationTotalLength - TUD_CONFIG_DESC_LEN;
+constexpr uint8_t kDescriptorInterfaceLength = 40;
+constexpr uint16_t kConfigurationTotalLength =
+    TUD_CONFIG_DESC_LEN + (config::kMaxControllerSlots * kDescriptorInterfaceLength);
 
 constexpr uint8_t kButtonDu = 0;
 constexpr uint8_t kButtonDd = 1;
@@ -49,7 +43,6 @@ constexpr uint8_t kButtonLs = 6;
 constexpr uint8_t kButtonRs = 7;
 constexpr uint8_t kButtonLb = 8;
 constexpr uint8_t kButtonRb = 9;
-constexpr uint8_t kButtonGuide = 10;
 constexpr uint8_t kButtonA = 12;
 constexpr uint8_t kButtonB = 13;
 constexpr uint8_t kButtonX = 14;
@@ -57,7 +50,7 @@ constexpr uint8_t kButtonY = 15;
 
 struct __attribute__((packed)) XInputControlReport {
   uint8_t type = 0x00;
-  uint8_t size = kControlPacketLength;
+  uint8_t size = 20;
   uint16_t buttons = 0;
   uint8_t lt = 0;
   uint8_t rt = 0;
@@ -68,57 +61,45 @@ struct __attribute__((packed)) XInputControlReport {
   uint8_t reserved[6] = {};
 };
 
-static_assert(sizeof(XInputControlReport) == kControlPacketLength);
+static_assert(sizeof(XInputControlReport) == 20);
 
-XInputControlReport g_report;
-bool g_has_sent_non_neutral_report = false;
-bool g_has_queued_report = false;
-XInputControlReport g_last_queued_report;
-
-struct XInputDriverState {
+struct XInputSlotState {
   bool interfaces_opened = false;
-  uint8_t rhport = 0;
-  uint8_t primary_interface = 0;
-  uint8_t control_in_ep = 0;
-  uint8_t control_out_ep = 0;
-  uint8_t headset_in_ep = 0;
-  uint8_t headset_out_ep = 0;
-  uint8_t headset_aux_in_ep = 0;
-  uint8_t headset_aux_out_ep = 0;
-  uint8_t auxiliary_in_ep = 0;
   bool report_in_flight = false;
   bool report_dirty = false;
   bool host_out_seen = false;
+  bool has_sent_non_neutral_report = false;
+  bool has_queued_report = false;
+  uint8_t rhport = 0;
+  uint8_t interface_number = 0;
+  uint8_t control_in_ep = 0;
+  uint8_t control_out_ep = 0;
   XInputControlReport pending_report;
-  alignas(4) XInputControlReport transfer_report;
+  XInputControlReport transfer_report;
+  XInputControlReport last_queued_report;
   alignas(4) uint8_t control_out_buffer[kEndpointPacketSize] = {};
-  alignas(4) uint8_t headset_out_buffer[kEndpointPacketSize] = {};
-  alignas(4) uint8_t headset_aux_out_buffer[kEndpointPacketSize] = {};
 };
 
-XInputDriverState g_driver_state;
+std::array<uint8_t, config::kMaxControllerSlots * kDescriptorInterfaceLength> g_interface_descriptors = {};
+std::array<uint8_t, kConfigurationTotalLength> g_configuration_descriptor = {};
+std::array<XInputSlotState, config::kMaxControllerSlots> g_slot_states = {};
+bool g_descriptors_built = false;
 bool g_logged_custom_descriptor = false;
 bool g_logged_device_descriptor = false;
 bool g_logged_config_descriptor = false;
-bool g_logged_string_descriptor[5] = {};
-uint32_t g_send_log_count = 0;
-uint32_t g_start_transfer_log_count = 0;
-uint32_t g_in_xfer_log_count = 0;
-uint32_t g_out_xfer_log_count = 0;
+bool g_logged_string_descriptor[4] = {};
 uint32_t g_send_attempt_count = 0;
 uint32_t g_send_success_count = 0;
 uint32_t g_in_xfer_complete_count = 0;
 uint32_t g_in_xfer_failure_count = 0;
 uint32_t g_out_xfer_complete_count = 0;
+uint8_t g_active_slots = 0;
 
-constexpr uint32_t kMaxVerboseSendLogs = 24;
-constexpr uint32_t kMaxVerboseTransferLogs = 32;
-
-constexpr std::array<uint8_t, kFeedbackPacketLength> kCapabilitiesFeedback = {
+constexpr std::array<uint8_t, 8> kCapabilitiesFeedback = {
     0x00, 0x08, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00,
 };
 
-constexpr std::array<uint8_t, kControlPacketLength> kCapabilitiesInputs = {
+constexpr std::array<uint8_t, 20> kCapabilitiesInputs = {
     0x00, 0x14, 0x3f, 0xf7, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
     0xc0, 0xff, 0xc0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
@@ -128,8 +109,8 @@ constexpr tusb_desc_device_t kXbox360DeviceDescriptor = {
     .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0200,
     .bDeviceClass = kVendorClass,
-    .bDeviceSubClass = kVendorSubClass,
-    .bDeviceProtocol = kVendorProtocol,
+    .bDeviceSubClass = kVendorClass,
+    .bDeviceProtocol = kVendorClass,
     .bMaxPacketSize0 = kEndpointZeroPacketSize,
     .idVendor = kXbox360Vid,
     .idProduct = kXbox360Pid,
@@ -140,45 +121,39 @@ constexpr tusb_desc_device_t kXbox360DeviceDescriptor = {
     .bNumConfigurations = 0x01,
 };
 
-constexpr std::array<uint8_t, kXbox360ConfigurationTotalLength> kXbox360ConfigurationDescriptor = {
-    0x09, 0x02, 0x99, 0x00, 0x04, 0x01, 0x00, 0xA0, 0xFA,
-    // Interface 0: Control Data
-    0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
-    0x11, 0x21, 0x00, 0x01, 0x01, 0x25, 0x81, 0x14, 0x00, 0x00, 0x00, 0x00, 0x13, 0x01, 0x08, 0x00, 0x00,
-    0x07, 0x05, 0x81, 0x03, 0x20, 0x00, 0x04,
-    0x07, 0x05, 0x01, 0x03, 0x20, 0x00, 0x08,
-    // Interface 1: Headset / expansion
-    0x09, 0x04, 0x01, 0x00, 0x04, 0xFF, 0x5D, 0x03, 0x00,
-    0x1B, 0x21, 0x00, 0x01, 0x01, 0x01, 0x82, 0x40, 0x01, 0x02, 0x20, 0x16, 0x83, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x16, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x07, 0x05, 0x82, 0x03, 0x20, 0x00, 0x02,
-    0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x04,
-    0x07, 0x05, 0x83, 0x03, 0x20, 0x00, 0x40,
-    0x07, 0x05, 0x03, 0x03, 0x20, 0x00, 0x10,
-    // Interface 2: Auxiliary
-    0x09, 0x04, 0x02, 0x00, 0x01, 0xFF, 0x5D, 0x02, 0x00,
-    0x09, 0x21, 0x00, 0x01, 0x01, 0x22, 0x84, 0x07, 0x00,
-    0x07, 0x05, 0x84, 0x03, 0x20, 0x00, 0x10,
-    // Interface 3: Security method
-    0x09, 0x04, 0x03, 0x00, 0x00, 0xFF, 0xFD, 0x13, kSecurityMethodStringIndex,
-    0x06, 0x41, 0x00, 0x01, 0x01, 0x03,
-};
+void buildDescriptors() {
+  if (g_descriptors_built) {
+    return;
+  }
 
-static_assert(kXbox360ConfigurationDescriptor.size() == kXbox360ConfigurationTotalLength);
+  g_configuration_descriptor = {
+      0x09,
+      0x02,
+      static_cast<uint8_t>(kConfigurationTotalLength & 0xff),
+      static_cast<uint8_t>((kConfigurationTotalLength >> 8) & 0xff),
+      config::kMaxControllerSlots,
+      0x01,
+      0x00,
+      0xA0,
+      0xFA,
+  };
 
-constexpr const char* kSecurityMethodString =
-    "Xbox Security Method 3, Version 1.00, Microsoft Corporation. All rights reserved.";
+  for (uint8_t slot = 0; slot < config::kMaxControllerSlots; ++slot) {
+    const uint8_t in_ep = static_cast<uint8_t>(0x81 + slot);
+    const uint8_t out_ep = static_cast<uint8_t>(0x01 + slot);
+    const size_t offset = slot * kDescriptorInterfaceLength;
+    const std::array<uint8_t, kDescriptorInterfaceLength> block = {
+        0x09, 0x04, slot, 0x00, 0x02, kVendorClass, kXInputSubClass, kXInputProtocol, 0x00,
+        0x11, 0x21, 0x00, 0x01, 0x01, 0x25, in_ep, 0x14, 0x00, 0x00, 0x00, 0x00, 0x13, 0x01, 0x08, 0x00, 0x00,
+        0x07, 0x05, in_ep, 0x03, 0x20, 0x00, 0x04,
+        0x07, 0x05, out_ep, 0x03, 0x20, 0x00, 0x08,
+    };
+    memcpy(g_interface_descriptors.data() + offset, block.data(), block.size());
+    memcpy(g_configuration_descriptor.data() + TUD_CONFIG_DESC_LEN + offset, block.data(), block.size());
+  }
 
-uint16_t xinputCustomLoadDescriptor(uint8_t* dst, uint8_t* itf);
-void xinputDriverInit(void);
-void xinputDriverReset(uint8_t rhport);
-uint16_t xinputDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf, uint16_t max_len);
-bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request);
-bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes);
-bool xinputPrimeOutEndpoint(uint8_t rhport, uint8_t ep_addr);
-bool xinputStartReportTransfer(void);
-bool xinputReportIsNeutral(const XInputControlReport& report);
-bool xinputReportsEqual(const XInputControlReport& lhs, const XInputControlReport& rhs);
+  g_descriptors_built = true;
+}
 
 uint32_t serialFromUuid() {
   uint32_t hash = 2166136261u;
@@ -215,8 +190,19 @@ uint16_t buttonsFromReport(const HostInputReport& report) {
   if (report.btn.b) buttons |= (1u << kButtonB);
   if (report.btn.x) buttons |= (1u << kButtonX);
   if (report.btn.y) buttons |= (1u << kButtonY);
-  (void)kButtonGuide;
   return buttons;
+}
+
+XInputControlReport reportFromHostInput(const HostInputReport& report) {
+  XInputControlReport xinput_report;
+  xinput_report.buttons = buttonsFromReport(report);
+  xinput_report.lt = report.lt;
+  xinput_report.rt = report.rt;
+  xinput_report.lx = report.lx;
+  xinput_report.ly = report.ly;
+  xinput_report.rx = report.rx;
+  xinput_report.ry = report.ry;
+  return xinput_report;
 }
 
 bool xinputReportIsNeutral(const XInputControlReport& report) {
@@ -225,46 +211,80 @@ bool xinputReportIsNeutral(const XInputControlReport& report) {
 }
 
 bool xinputReportsEqual(const XInputControlReport& lhs, const XInputControlReport& rhs) {
-  return lhs.buttons == rhs.buttons && lhs.lt == rhs.lt && lhs.rt == rhs.rt && lhs.lx == rhs.lx &&
-         lhs.ly == rhs.ly && lhs.rx == rhs.rx && lhs.ry == rhs.ry;
+  return memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
 
-uint8_t* outBufferForEndpoint(uint8_t ep_addr) {
-  switch (ep_addr) {
-    case 0x01:
-      return g_driver_state.control_out_buffer;
-    case 0x02:
-      return g_driver_state.headset_out_buffer;
-    case 0x03:
-      return g_driver_state.headset_aux_out_buffer;
-    default:
-      return nullptr;
-  }
+int8_t slotIndexFromInterface(uint8_t interface_number) {
+  return interface_number < config::kMaxControllerSlots ? static_cast<int8_t>(interface_number) : -1;
 }
 
-uint16_t interfaceSpanLength(tusb_desc_interface_t const* desc_intf, uint16_t max_len) {
-  uint16_t consumed = 0;
-  const uint8_t first_interface = desc_intf->bInterfaceNumber;
-  auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
-
-  while (consumed < max_len) {
-    const uint8_t len = tu_desc_len(desc);
-    if (len == 0 || consumed + len > max_len) {
-      return 0;
+int8_t slotIndexFromEndpoint(uint8_t ep_addr) {
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    if (!g_slot_states[i].interfaces_opened) {
+      continue;
     }
-
-    if (consumed != 0 && tu_desc_type(desc) == TUSB_DESC_INTERFACE) {
-      const auto* next_interface = reinterpret_cast<tusb_desc_interface_t const*>(desc);
-      if (next_interface->bInterfaceNumber >= static_cast<uint8_t>(first_interface + kInterfaceCount)) {
-        break;
-      }
+    if (g_slot_states[i].control_in_ep == ep_addr || g_slot_states[i].control_out_ep == ep_addr) {
+      return static_cast<int8_t>(i);
     }
+  }
+  return -1;
+}
 
-    consumed = static_cast<uint16_t>(consumed + len);
-    desc = tu_desc_next(desc);
+bool xinputPrimeOutEndpoint(uint8_t slot_index) {
+  XInputSlotState& slot = g_slot_states[slot_index];
+  if (!slot.interfaces_opened || slot.control_out_ep == 0) {
+    return false;
+  }
+  return usbd_edpt_xfer(slot.rhport, slot.control_out_ep, slot.control_out_buffer, sizeof(slot.control_out_buffer));
+}
+
+bool xinputStartReportTransfer(uint8_t slot_index) {
+  XInputSlotState& slot = g_slot_states[slot_index];
+  if (!slot.interfaces_opened || slot.control_in_ep == 0 || slot.report_in_flight || !slot.host_out_seen || !tud_ready()) {
+    return false;
+  }
+  if (!usbd_edpt_ready(slot.rhport, slot.control_in_ep)) {
+    return false;
   }
 
-  return consumed;
+  slot.transfer_report = slot.pending_report;
+  slot.report_in_flight = usbd_edpt_xfer(slot.rhport, slot.control_in_ep,
+                                         reinterpret_cast<uint8_t*>(&slot.transfer_report),
+                                         sizeof(slot.transfer_report));
+  if (slot.report_in_flight) {
+    slot.report_dirty = false;
+    slot.last_queued_report = slot.transfer_report;
+    slot.has_queued_report = true;
+    ++g_send_success_count;
+    if (!xinputReportIsNeutral(slot.transfer_report)) {
+      slot.has_sent_non_neutral_report = true;
+    }
+  }
+  return slot.report_in_flight;
+}
+
+bool queueSlotReport(uint8_t slot_index, const XInputControlReport& report) {
+  XInputSlotState& slot = g_slot_states[slot_index];
+  if (!slot.interfaces_opened) {
+    return false;
+  }
+  if (xinputReportIsNeutral(report) && !slot.has_sent_non_neutral_report) {
+    slot.pending_report = report;
+    slot.report_dirty = false;
+    return true;
+  }
+  if (slot.report_in_flight && xinputReportsEqual(report, slot.transfer_report)) {
+    return true;
+  }
+  if (slot.report_dirty && xinputReportsEqual(report, slot.pending_report)) {
+    return !slot.report_in_flight ? xinputStartReportTransfer(slot_index) : true;
+  }
+  if (!slot.report_in_flight && slot.has_queued_report && xinputReportsEqual(report, slot.last_queued_report)) {
+    return true;
+  }
+  slot.pending_report = report;
+  slot.report_dirty = true;
+  return xinputStartReportTransfer(slot_index);
 }
 
 bool xinputUsbInit() {
@@ -272,22 +292,31 @@ bool xinputUsbInit() {
   if (initialized) {
     return true;
   }
-  if (tinyusb_enable_interface(USB_INTERFACE_CUSTOM, kXbox360InterfaceDescriptorLength, xinputCustomLoadDescriptor) !=
-      ESP_OK) {
-    esp_rom_printf("USBX: tinyusb_enable_interface failed\n");
+  buildDescriptors();
+  if (tinyusb_enable_interface(USB_INTERFACE_CUSTOM, g_interface_descriptors.size(),
+                               [](uint8_t* dst, uint8_t* itf) -> uint16_t {
+                                 if (!g_logged_custom_descriptor) {
+                                   esp_rom_printf("USBX: load custom descriptor itf=%u add=%u\n",
+                                                  static_cast<unsigned>(*itf),
+                                                  static_cast<unsigned>(config::kMaxControllerSlots));
+                                   g_logged_custom_descriptor = true;
+                                 }
+                                 *itf = static_cast<uint8_t>(*itf + config::kMaxControllerSlots);
+                                 memcpy(dst, g_interface_descriptors.data(), g_interface_descriptors.size());
+                                 return g_interface_descriptors.size();
+                               }) != ESP_OK) {
     return false;
   }
+
   initialized = true;
   USB.VID(kXbox360Vid);
   USB.PID(kXbox360Pid);
   USB.firmwareVersion(kXbox360BcdDevice);
   USB.usbVersion(0x0200);
   USB.usbClass(kVendorClass);
-  USB.usbSubClass(kVendorSubClass);
-  USB.usbProtocol(kVendorProtocol);
-  USB.usbAttributes(kUsbAttributesBusPoweredRemoteWakeup);
-  USB.usbPower(kUsbPowerMilliAmps);
-  USB.productName("Controller");
+  USB.usbSubClass(kVendorClass);
+  USB.usbProtocol(kVendorClass);
+  USB.productName(config::kUsbXInputProductName);
   USB.manufacturerName("Microsoft");
   USB.serialNumber(config::kDeviceUuid);
   return true;
@@ -305,97 +334,18 @@ uint16_t copyUtf16StringDescriptor(const char* value, uint16_t* dst) {
   return dst[0];
 }
 
-uint16_t xinputCustomLoadDescriptor(uint8_t* dst, uint8_t* itf) {
-  if (!g_logged_custom_descriptor) {
-    esp_rom_printf("USBX: load custom descriptor itf=%u add=%u\n", static_cast<unsigned>(*itf),
-                   static_cast<unsigned>(kInterfaceCount));
-    g_logged_custom_descriptor = true;
-  }
-  *itf = static_cast<uint8_t>(*itf + kInterfaceCount);
-  memcpy(dst, kXbox360ConfigurationDescriptor.data() + TUD_CONFIG_DESC_LEN, kXbox360InterfaceDescriptorLength);
-  return kXbox360InterfaceDescriptorLength;
-}
-
-bool xinputPrimeOutEndpoint(uint8_t rhport, uint8_t ep_addr) {
-  uint8_t* buffer = outBufferForEndpoint(ep_addr);
-  if (buffer == nullptr) {
-    return false;
-  }
-  const bool queued = usbd_edpt_xfer(rhport, ep_addr, buffer, sizeof(g_driver_state.control_out_buffer));
-  if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
-    esp_rom_printf("USBX: prime out ep=0x%02x queued=%u\n", static_cast<unsigned>(ep_addr), queued ? 1u : 0u);
-  }
-  return queued;
-}
-
-bool xinputStartReportTransfer() {
-  if (!g_driver_state.interfaces_opened || g_driver_state.control_in_ep == 0 || g_driver_state.report_in_flight ||
-      !g_driver_state.host_out_seen) {
-    if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
-      esp_rom_printf("USBX: start xfer blocked open=%u in_ep=0x%02x inflight=%u dirty=%u out_seen=%u\n",
-                     g_driver_state.interfaces_opened ? 1u : 0u, static_cast<unsigned>(g_driver_state.control_in_ep),
-                     g_driver_state.report_in_flight ? 1u : 0u, g_driver_state.report_dirty ? 1u : 0u,
-                     g_driver_state.host_out_seen ? 1u : 0u);
-      ++g_start_transfer_log_count;
-    }
-    return false;
-  }
-
-  const bool tud_is_ready = tud_ready();
-  const bool ep_ready = tud_is_ready && usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep);
-  if (!tud_is_ready || !ep_ready) {
-    if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
-      esp_rom_printf("USBX: start xfer not ready tud=%u ep=0x%02x ep_ready=%u dirty=%u\n", tud_is_ready ? 1u : 0u,
-                     static_cast<unsigned>(g_driver_state.control_in_ep), ep_ready ? 1u : 0u,
-                     g_driver_state.report_dirty ? 1u : 0u);
-      ++g_start_transfer_log_count;
-    }
-    return false;
-  }
-
-  g_driver_state.transfer_report = g_driver_state.pending_report;
-  g_driver_state.report_in_flight = usbd_edpt_xfer(g_driver_state.rhport, g_driver_state.control_in_ep,
-                                                   reinterpret_cast<uint8_t*>(&g_driver_state.transfer_report),
-                                                   sizeof(g_driver_state.transfer_report));
-  if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
-    esp_rom_printf("USBX: start xfer ep=0x%02x queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d\n",
-                   static_cast<unsigned>(g_driver_state.control_in_ep), g_driver_state.report_in_flight ? 1u : 0u,
-                   static_cast<unsigned>(g_driver_state.transfer_report.buttons),
-                   static_cast<unsigned>(g_driver_state.transfer_report.lt),
-                   static_cast<unsigned>(g_driver_state.transfer_report.rt), g_driver_state.transfer_report.lx,
-                   g_driver_state.transfer_report.ly, g_driver_state.transfer_report.rx, g_driver_state.transfer_report.ry);
-    ++g_start_transfer_log_count;
-  }
-  if (g_driver_state.report_in_flight) {
-    g_driver_state.report_dirty = false;
-    g_last_queued_report = g_driver_state.transfer_report;
-    g_has_queued_report = true;
-    ++g_send_success_count;
-    if (!xinputReportIsNeutral(g_driver_state.transfer_report)) {
-      g_has_sent_non_neutral_report = true;
-    }
-  }
-  return g_driver_state.report_in_flight;
-}
-
 void xinputDriverInit(void) {
-  g_driver_state = XInputDriverState{};
+  g_slot_states = {};
   g_logged_custom_descriptor = false;
   g_logged_device_descriptor = false;
   g_logged_config_descriptor = false;
   memset(g_logged_string_descriptor, 0, sizeof(g_logged_string_descriptor));
-  g_send_log_count = 0;
-  g_start_transfer_log_count = 0;
-  g_in_xfer_log_count = 0;
-  g_out_xfer_log_count = 0;
   g_send_attempt_count = 0;
   g_send_success_count = 0;
   g_in_xfer_complete_count = 0;
   g_in_xfer_failure_count = 0;
   g_out_xfer_complete_count = 0;
-  g_has_sent_non_neutral_report = false;
-  g_has_queued_report = false;
-  g_last_queued_report = XInputControlReport{};
+  g_active_slots = 0;
 }
 
 void xinputDriverReset(uint8_t rhport) {
@@ -404,109 +354,59 @@ void xinputDriverReset(uint8_t rhport) {
 }
 
 uint16_t xinputDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf, uint16_t max_len) {
-  esp_rom_printf("USBX: driver open cls=%u sub=%u proto=%u itf=%u len=%u\n",
-                 static_cast<unsigned>(desc_intf->bInterfaceClass),
-                 static_cast<unsigned>(desc_intf->bInterfaceSubClass),
-                 static_cast<unsigned>(desc_intf->bInterfaceProtocol),
-                 static_cast<unsigned>(desc_intf->bInterfaceNumber), static_cast<unsigned>(max_len));
-  if (desc_intf->bInterfaceClass != kVendorClass || desc_intf->bInterfaceSubClass != 0x5d ||
-      desc_intf->bInterfaceProtocol != 0x01) {
-    esp_rom_printf("USBX: driver open rejected\n");
+  if (desc_intf->bInterfaceClass != kVendorClass || desc_intf->bInterfaceSubClass != kXInputSubClass ||
+      desc_intf->bInterfaceProtocol != kXInputProtocol) {
     return 0;
   }
 
-  const uint16_t span_len = interfaceSpanLength(desc_intf, max_len);
-  if (span_len == 0) {
-    esp_rom_printf("USBX: driver open span=0\n");
+  const int8_t slot_index = slotIndexFromInterface(desc_intf->bInterfaceNumber);
+  if (slot_index < 0) {
     return 0;
   }
 
-  g_driver_state = XInputDriverState{};
-  g_driver_state.interfaces_opened = true;
-  g_driver_state.rhport = rhport;
-  g_driver_state.primary_interface = desc_intf->bInterfaceNumber;
+  XInputSlotState& slot = g_slot_states[slot_index];
+  slot = {};
+  slot.interfaces_opened = true;
+  slot.rhport = rhport;
+  slot.interface_number = desc_intf->bInterfaceNumber;
 
   auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
-  const auto* const end = desc + span_len;
-  uint8_t current_interface = desc_intf->bInterfaceNumber;
-
-  while (desc < end) {
-    const uint8_t type = tu_desc_type(desc);
-
-    if (type == TUSB_DESC_INTERFACE) {
-      current_interface = reinterpret_cast<tusb_desc_interface_t const*>(desc)->bInterfaceNumber;
-    } else if (type == TUSB_DESC_ENDPOINT) {
+  uint16_t consumed = 0;
+  while (consumed < max_len) {
+    const uint8_t len = tu_desc_len(desc);
+    if (len == 0 || consumed + len > max_len) {
+      return 0;
+    }
+    if (consumed != 0 && tu_desc_type(desc) == TUSB_DESC_INTERFACE) {
+      break;
+    }
+    if (tu_desc_type(desc) == TUSB_DESC_ENDPOINT) {
       auto const* ep_desc = reinterpret_cast<tusb_desc_endpoint_t const*>(desc);
       if (!usbd_edpt_open(rhport, ep_desc)) {
-        g_driver_state.interfaces_opened = false;
-        esp_rom_printf("USBX: ep open failed addr=0x%02x\n", static_cast<unsigned>(ep_desc->bEndpointAddress));
+        slot.interfaces_opened = false;
         return 0;
       }
-
-      switch (current_interface) {
-        case 0:
-          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
-            g_driver_state.control_in_ep = ep_desc->bEndpointAddress;
-          } else {
-            g_driver_state.control_out_ep = ep_desc->bEndpointAddress;
-          }
-          break;
-        case 1:
-          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
-            if (g_driver_state.headset_in_ep == 0) {
-              g_driver_state.headset_in_ep = ep_desc->bEndpointAddress;
-            } else {
-              g_driver_state.headset_aux_in_ep = ep_desc->bEndpointAddress;
-            }
-          } else {
-            if (g_driver_state.headset_out_ep == 0) {
-              g_driver_state.headset_out_ep = ep_desc->bEndpointAddress;
-            } else {
-              g_driver_state.headset_aux_out_ep = ep_desc->bEndpointAddress;
-            }
-          }
-          break;
-        case 2:
-          if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
-            g_driver_state.auxiliary_in_ep = ep_desc->bEndpointAddress;
-          }
-          break;
-        default:
-          break;
+      if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
+        slot.control_in_ep = ep_desc->bEndpointAddress;
+      } else {
+        slot.control_out_ep = ep_desc->bEndpointAddress;
       }
     }
-
+    consumed = static_cast<uint16_t>(consumed + len);
     desc = tu_desc_next(desc);
   }
 
-  xinputPrimeOutEndpoint(rhport, g_driver_state.control_out_ep);
-  xinputPrimeOutEndpoint(rhport, g_driver_state.headset_out_ep);
-  xinputPrimeOutEndpoint(rhport, g_driver_state.headset_aux_out_ep);
-  esp_rom_printf(
-      "USBX: driver open ok span=%u in=0x%02x out=0x%02x hs_in=0x%02x hs_out=0x%02x aux=0x%02x\n",
-      static_cast<unsigned>(span_len), static_cast<unsigned>(g_driver_state.control_in_ep),
-      static_cast<unsigned>(g_driver_state.control_out_ep), static_cast<unsigned>(g_driver_state.headset_in_ep),
-      static_cast<unsigned>(g_driver_state.headset_out_ep), static_cast<unsigned>(g_driver_state.auxiliary_in_ep));
-  return span_len;
+  xinputPrimeOutEndpoint(static_cast<uint8_t>(slot_index));
+  return consumed;
 }
 
 bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request) {
   if (stage != CONTROL_STAGE_SETUP) {
     return true;
   }
-
   if (request->bmRequestType_bit.type != TUSB_REQ_TYPE_VENDOR || request->bRequest != 0x01) {
-    esp_rom_printf("USBX: ctrl unsupported bm=0x%02x req=0x%02x val=0x%04x idx=0x%04x len=%u\n",
-                   static_cast<unsigned>(request->bmRequestType), static_cast<unsigned>(request->bRequest),
-                   static_cast<unsigned>(request->wValue), static_cast<unsigned>(request->wIndex),
-                   static_cast<unsigned>(request->wLength));
     return false;
   }
-
-  esp_rom_printf("USBX: ctrl bm=0x%02x req=0x%02x val=0x%04x idx=0x%04x len=%u\n",
-                 static_cast<unsigned>(request->bmRequestType), static_cast<unsigned>(request->bRequest),
-                 static_cast<unsigned>(request->wValue), static_cast<unsigned>(request->wIndex),
-                 static_cast<unsigned>(request->wLength));
 
   if (request->bmRequestType_bit.direction == TUSB_DIR_IN) {
     if (request->wValue == 0x0000 && request->wIndex == 0x0000) {
@@ -516,15 +416,14 @@ bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request
       }
 
       if (request->bmRequestType == 0xc1) {
-        alignas(4) static uint8_t sram_feedback[kFeedbackPacketLength];
+        alignas(4) static uint8_t sram_feedback[kCapabilitiesFeedback.size()];
         memcpy(sram_feedback, kCapabilitiesFeedback.data(), kCapabilitiesFeedback.size());
         return tud_control_xfer(rhport, request, sram_feedback, kCapabilitiesFeedback.size());
       }
     }
 
     if (request->bmRequestType == 0xc1 && request->wValue == 0x0100) {
-      // Must copy from DROM (Flash) to SRAM for DWC2 DMA
-      alignas(4) static uint8_t sram_capabilities[kControlPacketLength];
+      alignas(4) static uint8_t sram_capabilities[kCapabilitiesInputs.size()];
       memcpy(sram_capabilities, kCapabilitiesInputs.data(), kCapabilitiesInputs.size());
       return tud_control_xfer(rhport, request, sram_capabilities, kCapabilitiesInputs.size());
     }
@@ -536,84 +435,59 @@ bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request
 }
 
 bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
-  if (!g_driver_state.interfaces_opened || result != XFER_RESULT_SUCCESS) {
-    if (ep_addr == g_driver_state.control_in_ep) {
-      g_driver_state.report_in_flight = false;
+  const int8_t slot_index = slotIndexFromEndpoint(ep_addr);
+  if (slot_index < 0) {
+    return false;
+  }
+
+  XInputSlotState& slot = g_slot_states[slot_index];
+  if (result != XFER_RESULT_SUCCESS) {
+    if (ep_addr == slot.control_in_ep) {
+      slot.report_in_flight = false;
       ++g_in_xfer_failure_count;
-      if (g_in_xfer_log_count < kMaxVerboseTransferLogs) {
-        esp_rom_printf("USBX: in xfer incomplete ep=0x%02x result=%u bytes=%u dirty=%u\n",
-                       static_cast<unsigned>(ep_addr), static_cast<unsigned>(result),
-                       static_cast<unsigned>(xferred_bytes), g_driver_state.report_dirty ? 1u : 0u);
-        ++g_in_xfer_log_count;
-      }
-    } else if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
-      if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
-        const uint8_t* buffer = outBufferForEndpoint(ep_addr);
-        esp_rom_printf("USBX: out xfer incomplete ep=0x%02x result=%u bytes=%u data=%02x %02x %02x %02x\n",
-                       static_cast<unsigned>(ep_addr), static_cast<unsigned>(result),
-                       static_cast<unsigned>(xferred_bytes), buffer != nullptr ? buffer[0] : 0u,
-                       buffer != nullptr ? buffer[1] : 0u, buffer != nullptr ? buffer[2] : 0u,
-                       buffer != nullptr ? buffer[3] : 0u);
-        ++g_out_xfer_log_count;
-      }
-      xinputPrimeOutEndpoint(rhport, ep_addr);
+    } else if (ep_addr == slot.control_out_ep) {
+      xinputPrimeOutEndpoint(static_cast<uint8_t>(slot_index));
     }
     return true;
   }
 
-  if (ep_addr == g_driver_state.control_in_ep) {
-    g_driver_state.report_in_flight = false;
+  if (ep_addr == slot.control_in_ep) {
+    slot.report_in_flight = false;
     ++g_in_xfer_complete_count;
-    if (g_in_xfer_log_count < kMaxVerboseTransferLogs) {
-      esp_rom_printf("USBX: in xfer complete ep=0x%02x bytes=%u dirty=%u success=%u/%u\n",
-                     static_cast<unsigned>(ep_addr), static_cast<unsigned>(xferred_bytes),
-                     g_driver_state.report_dirty ? 1u : 0u, static_cast<unsigned>(g_send_success_count),
-                     static_cast<unsigned>(g_send_attempt_count));
-      ++g_in_xfer_log_count;
+    if (slot.report_dirty) {
+      xinputStartReportTransfer(static_cast<uint8_t>(slot_index));
     }
+    (void)xferred_bytes;
     return true;
   }
 
-  if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT) {
+  if (ep_addr == slot.control_out_ep) {
+    slot.host_out_seen = true;
     ++g_out_xfer_complete_count;
-    if (ep_addr == g_driver_state.control_out_ep) {
-      g_driver_state.host_out_seen = true;
-    }
-    if (g_out_xfer_log_count < kMaxVerboseTransferLogs) {
-      const uint8_t* buffer = outBufferForEndpoint(ep_addr);
-      esp_rom_printf("USBX: out xfer complete ep=0x%02x bytes=%u data=%02x %02x %02x %02x %02x %02x %02x %02x\n",
-                     static_cast<unsigned>(ep_addr), static_cast<unsigned>(xferred_bytes),
-                     buffer != nullptr ? buffer[0] : 0u, buffer != nullptr ? buffer[1] : 0u,
-                     buffer != nullptr ? buffer[2] : 0u, buffer != nullptr ? buffer[3] : 0u,
-                     buffer != nullptr ? buffer[4] : 0u, buffer != nullptr ? buffer[5] : 0u,
-                     buffer != nullptr ? buffer[6] : 0u, buffer != nullptr ? buffer[7] : 0u);
-      ++g_out_xfer_log_count;
-    }
-    xinputPrimeOutEndpoint(rhport, ep_addr);
-    if (g_driver_state.report_dirty && ep_addr == g_driver_state.control_out_ep) {
-      xinputStartReportTransfer();
+    xinputPrimeOutEndpoint(static_cast<uint8_t>(slot_index));
+    if (slot.report_dirty) {
+      xinputStartReportTransfer(static_cast<uint8_t>(slot_index));
     }
   }
-
+  (void)rhport;
   return true;
 }
 }  // namespace
 
 extern "C" uint8_t const* tud_descriptor_device_cb(void) {
   if (!g_logged_device_descriptor) {
-    esp_rom_printf("USBX: device descriptor cb\n");
     g_logged_device_descriptor = true;
   }
   return reinterpret_cast<uint8_t const*>(&kXbox360DeviceDescriptor);
 }
 
 extern "C" uint8_t const* tud_descriptor_configuration_cb(uint8_t index) {
+  (void)index;
   if (!g_logged_config_descriptor) {
-    esp_rom_printf("USBX: config descriptor cb index=%u\n", static_cast<unsigned>(index));
     g_logged_config_descriptor = true;
   }
-  (void)index;
-  return kXbox360ConfigurationDescriptor.data();
+  buildDescriptors();
+  return g_configuration_descriptor.data();
 }
 
 extern "C" uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
@@ -621,7 +495,6 @@ extern "C" uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t lang
   static uint16_t descriptor[127];
 
   if (index < sizeof(g_logged_string_descriptor) && !g_logged_string_descriptor[index]) {
-    esp_rom_printf("USBX: string descriptor cb index=%u\n", static_cast<unsigned>(index));
     g_logged_string_descriptor[index] = true;
   }
 
@@ -637,13 +510,10 @@ extern "C" uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t lang
       value = "Microsoft";
       break;
     case kProductStringIndex:
-      value = "Controller";
+      value = config::kUsbXInputProductName;
       break;
     case kSerialStringIndex:
       value = config::kDeviceUuid;
-      break;
-    case kSecurityMethodStringIndex:
-      value = kSecurityMethodString;
       break;
     default:
       return nullptr;
@@ -675,22 +545,14 @@ bool UsbXInputGamepadBridge::begin() {
     delay(config::kUsbXInputBootLogStepMs);
   }
   if (config::kUsbXInputDeferBegin) {
-    esp_rom_printf("USBX: begin defer=1\n");
     deferred_start_ = true;
     return true;
   }
-  esp_rom_printf("USBX: before xinputUsbInit\n");
   if (!xinputUsbInit()) {
-    esp_rom_printf("USBX: xinputUsbInit failed\n");
     return false;
   }
-  esp_rom_printf("USBX: after xinputUsbInit\n");
-  esp_rom_printf("USBX: before USB.begin\n");
   USB.begin();
-  esp_rom_printf("USBX: after USB.begin\n");
   started_ = true;
-  g_report = XInputControlReport{};
-  esp_rom_printf("USBX: begin complete\n");
   return true;
 }
 
@@ -706,60 +568,27 @@ bool UsbXInputGamepadBridge::setPairingEnabled(bool enabled) {
 }
 
 bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
+  return sendSlots(&report, 1, 0x01);
+}
+
+bool UsbXInputGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t report_count, uint32_t active_slot_mask) {
   ++g_send_attempt_count;
-  const bool tud_is_ready = tud_ready();
-  const bool ep_ready = g_driver_state.interfaces_opened && g_driver_state.control_in_ep != 0 &&
-                        usbd_edpt_ready(g_driver_state.rhport, g_driver_state.control_in_ep);
-  if (!started_ || deferred_start_ || !g_driver_state.interfaces_opened || !tud_is_ready) {
-    if (g_send_log_count < kMaxVerboseSendLogs) {
-      esp_rom_printf("USBX: send blocked started=%u deferred=%u open=%u tud=%u in_ep=0x%02x ep_ready=%u\n",
-                     started_ ? 1u : 0u, deferred_start_ ? 1u : 0u, g_driver_state.interfaces_opened ? 1u : 0u,
-                     tud_is_ready ? 1u : 0u, static_cast<unsigned>(g_driver_state.control_in_ep), ep_ready ? 1u : 0u);
-      ++g_send_log_count;
-    }
+  if (!started_ || deferred_start_ || reports == nullptr || !tud_ready()) {
     return false;
   }
 
-  g_report.buttons = buttonsFromReport(report);
-  g_report.lt = report.lt;
-  g_report.rt = report.rt;
-  g_report.lx = report.lx;
-  g_report.ly = report.ly;
-  g_report.rx = report.rx;
-  g_report.ry = report.ry;
-
-  const bool neutral = xinputReportIsNeutral(g_report);
-  if (neutral && !g_has_sent_non_neutral_report) {
-    if (g_send_log_count < kMaxVerboseSendLogs) {
-      esp_rom_printf("USBX: send skipped initial neutral report\n");
-      ++g_send_log_count;
+  bool ok = true;
+  g_active_slots = 0;
+  const uint8_t capped_count = report_count > config::kMaxControllerSlots ? config::kMaxControllerSlots : report_count;
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    const bool active = i < capped_count && (active_slot_mask & (1u << i)) != 0;
+    const XInputControlReport report = active ? reportFromHostInput(reports[i]) : XInputControlReport{};
+    ok = queueSlotReport(i, report) && ok;
+    if (active) {
+      ++g_active_slots;
     }
-    return true;
   }
-  if (g_driver_state.report_in_flight && xinputReportsEqual(g_report, g_driver_state.transfer_report)) {
-    return true;
-  }
-  if (g_driver_state.report_dirty && xinputReportsEqual(g_report, g_driver_state.pending_report)) {
-    if (!g_driver_state.report_in_flight) {
-      return xinputStartReportTransfer();
-    }
-    return true;
-  }
-  if (!g_driver_state.report_in_flight && g_has_queued_report && xinputReportsEqual(g_report, g_last_queued_report)) {
-    return true;
-  }
-
-  g_driver_state.pending_report = g_report;
-  g_driver_state.report_dirty = true;
-  const bool queued = xinputStartReportTransfer();
-  if (g_send_log_count < kMaxVerboseSendLogs) {
-    esp_rom_printf("USBX: send queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d ep_ready=%u\n",
-                   queued ? 1u : 0u, static_cast<unsigned>(g_report.buttons), static_cast<unsigned>(g_report.lt),
-                   static_cast<unsigned>(g_report.rt), g_report.lx, g_report.ly, g_report.rx, g_report.ry,
-                   ep_ready ? 1u : 0u);
-    ++g_send_log_count;
-  }
-  return queued;
+  return ok;
 }
 
 HostStatus UsbXInputGamepadBridge::status() const {
@@ -767,15 +596,12 @@ HostStatus UsbXInputGamepadBridge::status() const {
   status.transport = "usb";
   status.variant = "pc";
   status.display_name = config::kUsbXInputProductName;
-  status.ready = started_ && !deferred_start_ && g_driver_state.interfaces_opened;
+  status.ready = started_ && !deferred_start_;
   status.connected = started_ && !deferred_start_ && tud_mounted();
   status.supports_pairing = false;
   status.pairing_enabled = false;
   status.advertising = false;
-  status.usb_interfaces_opened = g_driver_state.interfaces_opened;
-  status.usb_report_in_flight = g_driver_state.report_in_flight;
-  status.usb_report_dirty = g_driver_state.report_dirty;
-  status.usb_control_in_ep = g_driver_state.control_in_ep;
+  status.usb_active_slots = g_active_slots;
   status.usb_send_attempts = g_send_attempt_count;
   status.usb_send_successes = g_send_success_count;
   status.usb_in_completions = g_in_xfer_complete_count;

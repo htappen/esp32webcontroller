@@ -15,6 +15,7 @@ EXPECTED_TRANSPORT="${EXPECTED_TRANSPORT:-usb}"
 EXPECTED_VARIANT="${EXPECTED_VARIANT:-pc}"
 EXPECTED_USB_VIDPID="${EXPECTED_USB_VIDPID:-045e:028e}"
 USB_ENUM_TIMEOUT_SECONDS="${USB_ENUM_TIMEOUT_SECONDS:-12}"
+EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-4}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
@@ -98,6 +99,30 @@ wait_for_input_node() {
   return 1
 }
 
+count_xinput_controllers() {
+  python3 - <<'PY'
+import re
+
+device_name = "Microsoft X-Box 360 pad"
+with open("/proc/bus/input/devices", "r", encoding="utf-8") as handle:
+    blocks = handle.read().strip().split("\n\n")
+
+count = 0
+for block in blocks:
+    name_match = re.search(r'^N: Name="(.+)"$', block, flags=re.MULTILINE)
+    handlers_match = re.search(r"^H: Handlers=(.+)$", block, flags=re.MULTILINE)
+    if not name_match or not handlers_match:
+        continue
+    if name_match.group(1) != device_name:
+        continue
+    handlers = handlers_match.group(1).split()
+    if any(handler.startswith("event") for handler in handlers):
+        count += 1
+
+print(count)
+PY
+}
+
 capture_case() {
   local name="$1"
   local duration="$2"
@@ -145,6 +170,13 @@ wait_for_input_node || {
 log "capturing USB host visibility"
 grep -n "Microsoft X-Box 360 pad" /proc/bus/input/devices || true
 ls /dev/input/js* 2>/dev/null || true
+controller_count="$(count_xinput_controllers)"
+if [[ "${controller_count}" != "${EXPECTED_CONTROLLER_COUNT}" ]]; then
+  printf '[pi-usb-e2e] expected %s Linux input controllers, found %s\n' "${EXPECTED_CONTROLLER_COUNT}" "${controller_count}" >&2
+  dump_host_diagnostics
+  exit 1
+fi
+log "saw ${controller_count} enumerated XInput controller interfaces"
 EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "Microsoft X-Box 360 pad" --wait-timeout 10 --print-device)"
 log "using input event device ${EVENT_DEVICE}"
 

@@ -14,6 +14,7 @@ class HostConnectionManager {
   bool forgetCurrentHost();
   bool setPairingEnabled(bool enabled);
   bool sendReport(const HostInputReport& report);
+  bool sendSlotReports(const HostInputReport* reports, uint8_t report_count, uint32_t active_slot_mask);
   HostStatus status() const;
 
  private:

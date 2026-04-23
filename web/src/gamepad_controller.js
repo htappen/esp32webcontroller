@@ -11,6 +11,20 @@ import {
   createNeutralControllerState,
 } from './schema.js';
 
+const CLIENT_ID_STORAGE_KEY = 'controller_client_id';
+
+function getPersistentClientId() {
+  const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+  if (existing) {
+    return existing;
+  }
+  const nextId = typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, nextId);
+  return nextId;
+}
+
 export class GamepadController {
   constructor(opts) {
     this.stageEl = opts.stageEl;
@@ -18,6 +32,7 @@ export class GamepadController {
     this.rightEl = opts.rightEl;
     this.wsUrl = opts.wsUrl;
     this.onTransportStatus = opts.onTransportStatus;
+    this.onSessionStatus = opts.onSessionStatus;
 
     this.emulatedGamepadIndex = 0;
     this.activeEmulatedGamepadIndex = null;
@@ -28,6 +43,8 @@ export class GamepadController {
     this.retryDelayMs = 1000;
     this.fullStateIntervalId = null;
     this.state = createNeutralControllerState();
+    this.clientId = getPersistentClientId();
+    this.session = { connected: false, slot: null, reason: 'startup' };
   }
 
   async start() {
@@ -40,6 +57,17 @@ export class GamepadController {
   setTransportStatus(message) {
     if (typeof this.onTransportStatus === 'function') {
       this.onTransportStatus(message);
+    }
+  }
+
+  setSessionStatus(session) {
+    this.session = {
+      connected: Boolean(session?.connected),
+      slot: Number.isFinite(session?.slot) ? session.slot : null,
+      reason: session?.reason || 'unknown',
+    };
+    if (typeof this.onSessionStatus === 'function') {
+      this.onSessionStatus(this.session);
     }
   }
 
@@ -63,11 +91,13 @@ export class GamepadController {
 
     this.ws.onopen = () => {
       this.retryDelayMs = 1000;
-      this.setTransportStatus('Browser link live.');
-      this.sendFullState();
+      this.setTransportStatus('Browser link open. Waiting for controller slot...');
+      this.setSessionStatus({ connected: false, slot: null, reason: 'awaiting_assignment' });
+      this.sendHello();
     };
 
     this.ws.onclose = () => {
+      this.setSessionStatus({ connected: false, slot: null, reason: 'disconnected' });
       this.setTransportStatus('Browser link lost. Retrying...');
       window.setTimeout(() => this.connectWs(), this.retryDelayMs);
       this.retryDelayMs = Math.min(this.retryDelayMs * 2, 5000);
@@ -75,6 +105,10 @@ export class GamepadController {
 
     this.ws.onerror = () => {
       this.setTransportStatus('Browser link error.');
+    };
+
+    this.ws.onmessage = (event) => {
+      this.handleWsMessage(event.data);
     };
   }
 
@@ -216,10 +250,48 @@ export class GamepadController {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
+    if (packet.type !== 'hello' && !this.session.connected) {
+      return;
+    }
 
     packet.t = Date.now();
     packet.seq = ++this.seq;
     this.ws.send(JSON.stringify(packet));
+  }
+
+  sendHello() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(JSON.stringify({
+      type: 'hello',
+      clientId: this.clientId,
+      protocolVersion: 2,
+    }));
+  }
+
+  handleWsMessage(raw) {
+    let message;
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    if (message?.type !== 'session') {
+      return;
+    }
+
+    this.setSessionStatus(message);
+    if (message.connected && Number.isFinite(message.slot)) {
+      this.setTransportStatus(`Browser link live. Controller ${message.slot}.`);
+      this.sendFullState();
+      return;
+    }
+
+    if (message.reason === 'full') {
+      this.setTransportStatus('Controller slots full. Retrying...');
+    }
   }
 
   sendDeltaState(btnDelta = {}, axDelta = {}) {

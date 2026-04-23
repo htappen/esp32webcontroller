@@ -6,7 +6,12 @@
 
 #include "state_store.h"
 
+struct WsHelloPacket {
+  char client_id[37] = {};
+};
+
 class WsBridge {
  public:
+  bool parseHello(const char* payload, WsHelloPacket* out) const;
   bool parseJson(const char* payload, const ControllerState& base, ControllerState* out) const;
 };

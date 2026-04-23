@@ -11,6 +11,7 @@ class UsbXInputGamepadBridge : public HostTransport {
   bool resetConnection() override;
   bool setPairingEnabled(bool enabled) override;
   bool send(const HostInputReport& report) override;
+  bool sendSlots(const HostInputReport* reports, uint8_t report_count, uint32_t active_slot_mask) override;
  HostStatus status() const override;
 
  private:

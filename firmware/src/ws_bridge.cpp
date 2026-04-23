@@ -1,5 +1,7 @@
 #include "ws_bridge.h"
 
+#include <string.h>
+
 namespace {
 bool parse_button(JsonVariantConst value) {
   if (value.is<bool>()) {
@@ -49,6 +51,28 @@ void apply_axis_if_present(JsonVariantConst object, const char* key, float* out)
   }
 }
 }  // namespace
+
+bool WsBridge::parseHello(const char* payload, WsHelloPacket* out) const {
+  if (payload == nullptr || out == nullptr) {
+    return false;
+  }
+
+  JsonDocument doc;
+  const auto err = deserializeJson(doc, payload);
+  if (err) {
+    return false;
+  }
+
+  const char* type = doc["type"] | "";
+  const char* client_id = doc["clientId"] | "";
+  if (strcmp(type, "hello") != 0 || client_id[0] == '\0') {
+    return false;
+  }
+
+  strncpy(out->client_id, client_id, sizeof(out->client_id) - 1);
+  out->client_id[sizeof(out->client_id) - 1] = '\0';
+  return true;
+}
 
 bool WsBridge::parseJson(const char* payload, const ControllerState& base, ControllerState* out) const {
   if (payload == nullptr || out == nullptr) {

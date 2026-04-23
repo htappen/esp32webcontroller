@@ -15,6 +15,15 @@ The main host modes are:
 
 Defaults in the current tooling are aimed at the S3 workflow. Most scripts resolve the board, PlatformIO environment, serial port, and device identity automatically.
 
+## Environment Note
+
+For this workspace, assume the physical ESP32-S3 board is connected to the Raspberry Pi, not the local workstation running Codex.
+
+- Prefer Pi-side flash/debug/test flows for S3 hardware work.
+- Do not assume `/dev/ttyACM*` will appear on the local machine.
+- When a task needs flashing or hardware validation, use the Pi helpers in `tools/pi/` first.
+- If manual button timing is needed for ROM download mode, start the appropriate wait/upload helper and then ask the user to press `BOOT`/`EN`.
+
 Board and use-case guidance:
 
 - Use `CONTROLLER_BOARD=wroom` with `CONTROLLER_HOST_MODE=ble` for the classic Bluetooth gamepad path.
@@ -106,6 +115,8 @@ That script rebuilds, flashes, captures the boot log, and checks for startup fau
 
 ## Raspberry Pi Validation
 
+The ESP32-S3 is connected to the Raspberry Pi for USB host, flash, and debug work. Before Pi-side flashing or validation, make sure the current workspace contents are copied to the Pi repo at `~/controller-pi-e2e`; do not assume the Pi checkout is already current.
+
 The repo includes Pi-side orchestration for remote build, flash, and end-to-end validation:
 
 ```bash
@@ -113,11 +124,19 @@ CONTROLLER_BOARD=s3 CONTROLLER_HOST_MODE=usb_xinput ./tools/pi/run_remote_e2e.sh
 CONTROLLER_BOARD=wroom CONTROLLER_HOST_MODE=ble ./tools/pi/run_remote_e2e.sh /dev/ttyUSB0
 ```
 
+If you are running Pi commands manually over SSH instead of `run_remote_e2e.sh`, sync the repo first, for example:
+
+```bash
+tar -C /home/htappen/controller --exclude=.git --exclude=.venv --exclude=.platformio --exclude=web/node_modules --exclude=third_party/virtual-gamepad-lib/node_modules -cf - . | ssh controller-pi 'cd /home/controller/controller-pi-e2e && tar -xf -'
+```
+
 For focused XInput input-event validation on the Pi host:
 
 ```bash
 ./tools/pi/check_xinput_input_events.sh
 ```
+
+Pi-side Python helpers should use the repo-managed venv at `~/controller-pi-e2e/tools/pi/.venv-pi/bin/python`. Do not assume the global `python3` or an activated shell venv is the interpreter running a given helper.
 
 Important Pi-side helpers include:
 
@@ -135,6 +154,8 @@ Primary helper:
 ```bash
 CONTROLLER_BOARD=s3 CONTROLLER_HOST_MODE=usb_xinput ./tools/pi/debug_startup_s3.sh
 ```
+
+As with Pi-side validation, sync the current workspace to `~/controller-pi-e2e` before starting a Pi-side debug session so OpenOCD/GDB and firmware sources match the code you are investigating.
 
 This path uses:
 

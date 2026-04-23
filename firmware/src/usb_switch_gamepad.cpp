@@ -56,7 +56,6 @@ struct __attribute__((packed)) NintendoSwitchReport {
 class NintendoSwitchUsbDevice : public USBHIDDevice {
  public:
   NintendoSwitchUsbDevice() {
-    static bool initialized = false;
     USB.VID(kNintendoSwitchVid);
     USB.PID(kNintendoSwitchPid);
     USB.usbClass(0);
@@ -65,10 +64,7 @@ class NintendoSwitchUsbDevice : public USBHIDDevice {
     USB.productName(config::kUsbSwitchProductName);
     USB.manufacturerName("ESP32 Controller");
     USB.serialNumber(config::kDeviceUuid);
-    if (!initialized) {
-      initialized = true;
-      hid_.addDevice(this, sizeof(kReportDescriptor));
-    }
+    hid_.addDevice(this, sizeof(kReportDescriptor));
   }
 
   void begin() {
@@ -148,13 +144,16 @@ class NintendoSwitchUsbDevice : public USBHIDDevice {
   NintendoSwitchReport report_;
 };
 
-NintendoSwitchUsbDevice g_usb_gamepad;
+NintendoSwitchUsbDevice g_usb_gamepads[config::kMaxControllerSlots];
 }  // namespace
 
 bool UsbSwitchGamepadBridge::begin() {
-  g_usb_gamepad.begin();
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    g_usb_gamepads[i].begin();
+  }
   USB.begin();
   started_ = true;
+  active_slots_ = 0;
   Serial.printf("USB host ready: transport=usb variant=switch board=%s vid=%04x pid=%04x\n", config::kBoardName,
                 kNintendoSwitchVid, kNintendoSwitchPid);
   return true;
@@ -175,7 +174,27 @@ bool UsbSwitchGamepadBridge::send(const HostInputReport& report) {
   if (!started_) {
     return false;
   }
-  return g_usb_gamepad.send(report);
+  active_slots_ = 1;
+  return g_usb_gamepads[0].send(report);
+}
+
+bool UsbSwitchGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t report_count, uint32_t active_slot_mask) {
+  if (!started_ || reports == nullptr) {
+    return false;
+  }
+
+  bool ok = true;
+  active_slots_ = 0;
+  const uint8_t capped_count = report_count > config::kMaxControllerSlots ? config::kMaxControllerSlots : report_count;
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    const bool active = i < capped_count && (active_slot_mask & (1u << i)) != 0;
+    const HostInputReport& report = active ? reports[i] : HostInputReport{};
+    ok = g_usb_gamepads[i].send(report) && ok;
+    if (active) {
+      ++active_slots_;
+    }
+  }
+  return ok;
 }
 
 HostStatus UsbSwitchGamepadBridge::status() const {
@@ -183,11 +202,12 @@ HostStatus UsbSwitchGamepadBridge::status() const {
   status.transport = "usb";
   status.variant = "switch";
   status.display_name = config::kUsbSwitchProductName;
-  status.ready = started_ && g_usb_gamepad.ready();
-  status.connected = started_ && g_usb_gamepad.mounted();
+  status.ready = started_ && g_usb_gamepads[0].ready();
+  status.connected = started_ && g_usb_gamepads[0].mounted();
   status.supports_pairing = false;
   status.pairing_enabled = false;
   status.advertising = false;
+  status.usb_active_slots = active_slots_;
   return status;
 }
 
