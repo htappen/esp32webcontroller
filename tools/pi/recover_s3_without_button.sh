@@ -12,7 +12,6 @@ TRY_JTAG="${PI_S3_RECOVERY_TRY_JTAG:-1}"
 STOP_OPENOCD_AFTER="${PI_S3_RECOVERY_STOP_OPENOCD_AFTER:-1}"
 GDB_BIN="${ROOT_DIR}/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gdb"
 GDB_CMDS="${ROOT_DIR}/tools/pi/reset_run_s3.gdb"
-HTTP_BASE_URL="${PI_S3_RECOVERY_HTTP_BASE_URL:-${CONTROLLER_DEVICE_LOCAL_URL:-}}"
 
 log() {
   printf '[pi-recover] %s\n' "$*"
@@ -104,26 +103,6 @@ try_jtag_reset_run() {
   return 1
 }
 
-try_http_reboot() {
-  if [[ -z "${HTTP_BASE_URL}" ]]; then
-    log "no HTTP reboot URL available"
-    return 1
-  fi
-  if [[ "${PI_S3_RECOVERY_TRY_HTTP_REBOOT:-1}" != "1" ]]; then
-    log "HTTP reboot fallback disabled"
-    return 1
-  fi
-
-  log "trying firmware HTTP reboot before JTAG attach"
-  if bash "${ROOT_DIR}/tools/pi/reboot_s3_over_http.sh" "${HTTP_BASE_URL}"; then
-    sleep 3
-    report_usb_state
-    return 0
-  fi
-  log "HTTP reboot request failed"
-  return 1
-}
-
 log "forcing Pi GPIO3/GPIO4 low before recovery attempts"
 if ! command -v pinctrl >/dev/null 2>&1; then
   log "pinctrl not available; this recovery helper must run on the Raspberry Pi"
@@ -134,10 +113,6 @@ bash "${ROOT_DIR}/tools/pi/prepare_s3_gpio_jtag.sh"
 report_usb_state
 
 if try_serial_watchdog_reset; then
-  exit 0
-fi
-
-if try_http_reboot; then
   exit 0
 fi
 

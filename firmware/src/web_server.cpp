@@ -174,12 +174,6 @@ bool WebServerBridge::begin() {
                                                  : "{\"ok\":true,\"pairingEnabled\":false}");
   });
 
-  g_http.on("/api/device/reboot", HTTP_POST, [this]() {
-    reboot_requested_ = true;
-    reboot_requested_ms_ = millis();
-    g_http.send(202, "application/json", "{\"ok\":true,\"status\":\"rebooting\"}");
-  });
-
   g_http.on("/", HTTP_GET, []() {
     File f = LittleFS.open("/index.html", "r");
     if (!f) {
@@ -243,9 +237,6 @@ void WebServerBridge::loop() {
     }
   }
 
-  if (reboot_requested_ && millis() - reboot_requested_ms_ > 250) {
-    ESP.restart();
-  }
 }
 
 void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {

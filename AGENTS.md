@@ -73,33 +73,27 @@ Notes:
 
 Complete S3 recovery and flash sequence:
 
-1. If the board is still running firmware and reachable over Wi-Fi, request a clean firmware reboot first:
-
-```bash
-./tools/pi/reboot_s3_over_http.sh http://<device-hostname>.local
-```
-
-2. If the board does not come back on serial, try the no-button recovery flow:
+1. If the board does not come back on serial, try the no-button recovery flow:
 
 ```bash
 CONTROLLER_BOARD=s3 ./tools/pi/recover_s3_without_button.sh
 ```
 
-3. If serial flashing requires ROM download mode on your hardware, enter flash mode by holding the board `BOOT` button low, then tap `EN` or `RESET`, then release `BOOT` after the serial port appears.
+2. If serial flashing requires ROM download mode on your hardware, enter flash mode by holding the board `BOOT` button low, then tap `EN` or `RESET`, then release `BOOT` after the serial port appears.
 
-4. Flash the image:
+3. Flash the image:
 
 ```bash
 ./tools/upload_firmware.sh --board s3 --host-mode usb_xinput /dev/ttyACM0
 ```
 
-5. For a direct prebuilt write with optional erase:
+4. For a direct prebuilt write with optional erase:
 
 ```bash
 ERASE_FIRST=1 ./tools/write_prebuilt_firmware.sh --board s3 --host-mode usb_xinput /dev/ttyACM0
 ```
 
-Clarification: this repo currently provides scripted Pi helpers for HTTP reboot and for forcing Pi `GPIO3`/`GPIO4` low during the S3 GPIO-JTAG path, but it does not currently provide a dedicated repo helper that drives board `GPIO0` low for ROM flashing. In the supported workflow here, entering flash mode is still the board-side `BOOT`/`EN` action unless you have separate external wiring for that strap.
+Clarification: this repo currently provides scripted Pi helpers for forcing Pi `GPIO3`/`GPIO4` low during the S3 GPIO-JTAG path, but it does not currently provide a dedicated repo helper that drives board `GPIO0` low for ROM flashing. In the supported workflow here, entering flash mode is still the board-side `BOOT`/`EN` action unless you have separate external wiring for that strap.
 
 If a full local smoke pass is needed, use:
 
