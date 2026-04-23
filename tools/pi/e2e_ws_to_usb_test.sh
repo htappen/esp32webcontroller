@@ -10,7 +10,7 @@ AP_SSID="${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}"
 AP_PASS="${AP_PASS:-}"
 RAW_HTTP_BASE_URL="${RAW_HTTP_BASE_URL:-http://192.168.4.1}"
 HTTP_BASE_URL="${HTTP_BASE_URL:-${CONTROLLER_DEVICE_LOCAL_URL}}"
-WS_URL="${WS_URL:-ws://192.168.4.1:81}"
+WS_URL="${WS_URL:-ws://${CONTROLLER_DEVICE_HOSTNAME}.local:81}"
 EXPECTED_TRANSPORT="${EXPECTED_TRANSPORT:-usb}"
 EXPECTED_VARIANT="${EXPECTED_VARIANT:-pc}"
 EXPECTED_USB_VIDPID="${EXPECTED_USB_VIDPID:-045e:028e}"
@@ -187,8 +187,8 @@ cat > "${TMP_DIR}/timeout_press.json" <<'JSON'
 {"t":4,"seq":4,"btn":{"a":1,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":1.0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
 JSON
 
-log "sending a controller packet over WebSocket"
-"${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/button_a.json" --hold-open 0.3
+log "sending a neutral controller packet over WebSocket"
+"${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/neutral.json" --hold-open 0.3
 sleep 0.4
 fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/status_after.json"
 "${VENV_PYTHON}" - "${TMP_DIR}/status_before.json" "${TMP_DIR}/status_after.json" <<'PY'

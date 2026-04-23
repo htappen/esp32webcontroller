@@ -90,9 +90,10 @@ struct XInputDriverState {
   bool report_dirty = false;
   bool host_out_seen = false;
   XInputControlReport pending_report;
-  uint8_t control_out_buffer[kEndpointPacketSize] = {};
-  uint8_t headset_out_buffer[kEndpointPacketSize] = {};
-  uint8_t headset_aux_out_buffer[kEndpointPacketSize] = {};
+  alignas(4) XInputControlReport transfer_report;
+  alignas(4) uint8_t control_out_buffer[kEndpointPacketSize] = {};
+  alignas(4) uint8_t headset_out_buffer[kEndpointPacketSize] = {};
+  alignas(4) uint8_t headset_aux_out_buffer[kEndpointPacketSize] = {};
 };
 
 XInputDriverState g_driver_state;
@@ -352,22 +353,27 @@ bool xinputStartReportTransfer() {
     return false;
   }
 
+  g_driver_state.transfer_report = g_driver_state.pending_report;
   g_driver_state.report_in_flight = usbd_edpt_xfer(g_driver_state.rhport, g_driver_state.control_in_ep,
-                                                   reinterpret_cast<uint8_t*>(&g_driver_state.pending_report),
-                                                   sizeof(g_driver_state.pending_report));
+                                                   reinterpret_cast<uint8_t*>(&g_driver_state.transfer_report),
+                                                   sizeof(g_driver_state.transfer_report));
   if (g_start_transfer_log_count < kMaxVerboseTransferLogs) {
     esp_rom_printf("USBX: start xfer ep=0x%02x queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d\n",
                    static_cast<unsigned>(g_driver_state.control_in_ep), g_driver_state.report_in_flight ? 1u : 0u,
-                   static_cast<unsigned>(g_driver_state.pending_report.buttons),
-                   static_cast<unsigned>(g_driver_state.pending_report.lt),
-                   static_cast<unsigned>(g_driver_state.pending_report.rt), g_driver_state.pending_report.lx,
-                   g_driver_state.pending_report.ly, g_driver_state.pending_report.rx, g_driver_state.pending_report.ry);
+                   static_cast<unsigned>(g_driver_state.transfer_report.buttons),
+                   static_cast<unsigned>(g_driver_state.transfer_report.lt),
+                   static_cast<unsigned>(g_driver_state.transfer_report.rt), g_driver_state.transfer_report.lx,
+                   g_driver_state.transfer_report.ly, g_driver_state.transfer_report.rx, g_driver_state.transfer_report.ry);
     ++g_start_transfer_log_count;
   }
   if (g_driver_state.report_in_flight) {
     g_driver_state.report_dirty = false;
-    g_last_queued_report = g_driver_state.pending_report;
+    g_last_queued_report = g_driver_state.transfer_report;
     g_has_queued_report = true;
+    ++g_send_success_count;
+    if (!xinputReportIsNeutral(g_driver_state.transfer_report)) {
+      g_has_sent_non_neutral_report = true;
+    }
   }
   return g_driver_state.report_in_flight;
 }
@@ -505,19 +511,22 @@ bool xinputDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request
   if (request->bmRequestType_bit.direction == TUSB_DIR_IN) {
     if (request->wValue == 0x0000 && request->wIndex == 0x0000) {
       if (request->bmRequestType == 0xc0) {
-        auto serial = serialPacket();
+        alignas(4) static auto serial = serialPacket();
         return tud_control_xfer(rhport, request, serial.data(), serial.size());
       }
 
       if (request->bmRequestType == 0xc1) {
-        return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesFeedback.data()),
-                                kCapabilitiesFeedback.size());
+        alignas(4) static uint8_t sram_feedback[kFeedbackPacketLength];
+        memcpy(sram_feedback, kCapabilitiesFeedback.data(), kCapabilitiesFeedback.size());
+        return tud_control_xfer(rhport, request, sram_feedback, kCapabilitiesFeedback.size());
       }
     }
 
     if (request->bmRequestType == 0xc1 && request->wValue == 0x0100) {
-      return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kCapabilitiesInputs.data()),
-                              kCapabilitiesInputs.size());
+      // Must copy from DROM (Flash) to SRAM for DWC2 DMA
+      alignas(4) static uint8_t sram_capabilities[kControlPacketLength];
+      memcpy(sram_capabilities, kCapabilitiesInputs.data(), kCapabilitiesInputs.size());
+      return tud_control_xfer(rhport, request, sram_capabilities, kCapabilitiesInputs.size());
     }
 
     return false;
@@ -561,9 +570,6 @@ bool xinputDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
                      g_driver_state.report_dirty ? 1u : 0u, static_cast<unsigned>(g_send_success_count),
                      static_cast<unsigned>(g_send_attempt_count));
       ++g_in_xfer_log_count;
-    }
-    if (g_driver_state.report_dirty) {
-      xinputStartReportTransfer();
     }
     return true;
   }
@@ -730,7 +736,13 @@ bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
     }
     return true;
   }
-  if (g_driver_state.report_in_flight && xinputReportsEqual(g_report, g_driver_state.pending_report)) {
+  if (g_driver_state.report_in_flight && xinputReportsEqual(g_report, g_driver_state.transfer_report)) {
+    return true;
+  }
+  if (g_driver_state.report_dirty && xinputReportsEqual(g_report, g_driver_state.pending_report)) {
+    if (!g_driver_state.report_in_flight) {
+      return xinputStartReportTransfer();
+    }
     return true;
   }
   if (!g_driver_state.report_in_flight && g_has_queued_report && xinputReportsEqual(g_report, g_last_queued_report)) {
@@ -740,12 +752,6 @@ bool UsbXInputGamepadBridge::send(const HostInputReport& report) {
   g_driver_state.pending_report = g_report;
   g_driver_state.report_dirty = true;
   const bool queued = xinputStartReportTransfer();
-  if (queued) {
-    ++g_send_success_count;
-    if (!neutral) {
-      g_has_sent_non_neutral_report = true;
-    }
-  }
   if (g_send_log_count < kMaxVerboseSendLogs) {
     esp_rom_printf("USBX: send queued=%u buttons=0x%04x lt=%u rt=%u lx=%d ly=%d rx=%d ry=%d ep_ready=%u\n",
                    queued ? 1u : 0u, static_cast<unsigned>(g_report.buttons), static_cast<unsigned>(g_report.lt),
