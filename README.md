@@ -1,6 +1,57 @@
 # ESP32 Web Controller
 
-ESP32-hosted web controller that runs on a phone and forwards input over WebSocket to firmware, which emits host-controller reports over either Bluetooth or wired USB, depending on the selected transport build.
+_Use your phone as a controller on Windows, MacOS, Linux and Switch!_
+
+Ever want to play a multiplayer game but you don't have enough controllers? No problem! 
+Just grab an ESP32, flash it with this firmware, then connect your phones to it. Everyone's phone becomes a controller!
+
+# Features
+* Turns phones into controllers for Windows, Mac, Linux or Switch
+* Supports up to 4 phone controllers on a single device
+* Only extra hardware is a cheap and small ESP32 (preferably S3)
+* Works over Bluetooth or USB so you can try it on all kinds of devices
+
+# Getting started
+
+## What you need
+For best experience, you need:
+* An ESP32 S3 board ( [example](https://www.aliexpress.us/item/3256807408682270.html) )
+* Windows, MacOS, or Linux PC to set up the ESP32
+* Some familiarity with flashing ESP32 devices
+
+You can also use a ESP32-WROOM, but you'll limited to 1 controller and Windows/Mac/Linux over Bluetooth.
+
+## Steps
+First, you need to flash your ESP32 with the firmware. Instructions:
+1. Clone the repo to any PC. Update the Git submodules
+   - `git submodule update --init --recursive`
+2. Setup local dev environment with PlatformIO and ESP32 toolchain
+   - `./tools/setup_env.sh` 
+3. (optional) Copy `local.env.example` to the same dir. Rename it to `local.env`. Replace the SSID and password
+with your desired wifi network info.
+4. Set environment variables to configure how you'll bridge your phones and game console. On Linux, `export ...=...`. On Windows, `sete ...=...`
+   - `CONTROLLER_BOARD`: What type of ESP32 board you're using. `s3` or `wroom`
+   - `CONTROLLER_DEVICE_UUID`: a UUID that decides your board's name
+   - `CONTROLLER_HOST_MODE`: How you'll connect the ESP32 to your device. One of `usb_switch`, `usb_xinput`, `ble`
+5. Hook your ESP32 to your PC. Put it in flash mode
+6. Build and Flash the ESP32 using `./tools/upload_firmware.sh` 
+
+Once you've flashed an ESP32, you're ready to play!
+1. Plug the ESP32 into a USB port on your console of choice if you're using USB, or power the device and pair it from your console.
+2. If you didn't already set up a wifi network for the ESP32, connect your phone to the network it broadcasts. It will be something like `<adjective> <noun> Pad`.
+3. From the phone, navigate to `http://<adjective>-<noun>.local` (using the same adjective and noun from earlier)
+4. Play!
+5. Optionally, you can enter your wifi network and password in the settings menu so you can communicate with the ESP32 over that.
+
+## Troubleshooting
+
+- If the host does not see the controller, remove the old Bluetooth pairing for the current `<Adjective> <Noun> Pad`, power-cycle the ESP32, and pair again.
+- If the phone says the page cannot be reached, make sure it is still connected to the current device AP and try the device's `.local` hostname again.
+- If controls stop responding, refresh the page on the phone and reconnect the Bluetooth controller if needed.
+- Keep only one phone connected to the controller page at a time for predictable behavior.
+
+# Developer notes
+Want to fork or add? Here's a bunch of info
 
 ## Connectivity Model
 
@@ -23,31 +74,6 @@ ESP32-hosted web controller that runs on a phone and forwards input over WebSock
 - `tools/`: Utility scripts for packing assets and monitoring firmware.
 - `test/host/`: Host-side protocol and mapping tests.
 
-## Quick Start
-
-1. Setup local dev environment:
-   - `./tools/setup_env.sh`
-2. Initialize git submodules:
-   - `git submodule update --init --recursive`
-3. Install PlatformIO and ESP32 toolchain.
-4. Select the default board target for your shell:
-   - `export CONTROLLER_BOARD=s3`
-   - Use `export CONTROLLER_BOARD=wroom` for classic ESP32-WROOM-32D boards.
-5. Build firmware:
-   - `./tools/build_firmware.sh`
-   - One-off override: `./tools/build_firmware.sh --board wroom`
-   - One-off UUID override: `./tools/build_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be`
-6. Upload filesystem assets and firmware:
-   - `./tools/upload_firmware.sh /dev/ttyUSB0`
-   - One-off override: `./tools/upload_firmware.sh --board wroom /dev/ttyUSB0`
-   - One-off UUID override: `./tools/upload_firmware.sh --device-uuid 019cba78-45f9-7003-ad59-451b095628be /dev/ttyUSB0`
-7. Upload firmware:
-   - The script uploads both LittleFS assets and firmware for the selected board target.
-   - Every PlatformIO firmware build now clears generated web assets, runs the app web lint checks, rebuilds the minified Vite bundle, and recopies the embedded app into `firmware/data/` automatically.
-8. Run the hardware startup integration check on an attached board:
-   - `./tools/hardware_integration_test.sh /dev/ttyUSB0`
-   - One-off override: `./tools/hardware_integration_test.sh --board wroom /dev/ttyUSB0`
-
 ## Remote Pi E2E
 
 Use the Pi runner when the board is physically connected to the Raspberry Pi instead of the development machine.
@@ -64,17 +90,7 @@ Current USB XInput note:
 - `firmware/src/usb_xinput_gamepad.cpp` now registers a custom TinyUSB app driver through `usbd_app_driver_get_cb()` and handles descriptor open, endpoint transfer, and minimum XInput control behavior directly.
 - This path builds successfully, but still needs real Linux host validation before it should be treated as stable.
 
-## End User Guide
-
-Use this section if the board is already flashed and you just want to connect and play.
-
-### What The Device Does
-
-- Your phone connects to the ESP32 over Wi-Fi and opens the controller page.
-- Your game host pairs to the ESP32 over Bluetooth as a gamepad.
-- The ESP32 bridges phone input to the host as a BLE controller.
-
-### Device Names
+## Device Names
 
 - Wi-Fi network: `<Adjective> <Noun> Pad`
 - Wi-Fi security: open network, no password
@@ -83,25 +99,6 @@ Use this section if the board is already flashed and you just want to connect an
 
 Builds derive these names from a UUID using a curated short-word subset of the `python-petname` English lists. Test automation defaults to the committed test UUID `019cba78-45f9-7003-ad59-451b095628be`. The most recent build identity is persisted to `build/device_identity.env`.
 
-### Connect And Play
-
-1. Power the flashed ESP32 board over USB.
-2. On the device you want to control, open Bluetooth settings and pair to the advertised `<Adjective> <Noun> Pad`.
-3. On your phone, join the Wi-Fi network `<Adjective> <Noun> Pad`.
-4. Open a browser on the phone and go to the `.local` hostname shown in the web UI or boot log.
-5. Wait for the controller page to load, then keep that tab open and in the foreground while you play.
-6. Use the on-screen controls on the phone; the paired host should receive them as a Bluetooth gamepad.
-
-### Shared Wi-Fi Option
-
-If the device has already been configured for a local Wi-Fi network, your phone may be able to open the controller page over that network instead of joining the AP. Try the device's `.local` hostname first. If that network does not resolve mDNS reliably, use the IP address shown by whoever configured the board.
-
-### Troubleshooting
-
-- If the host does not see the controller, remove the old Bluetooth pairing for the current `<Adjective> <Noun> Pad`, power-cycle the ESP32, and pair again.
-- If the phone says the page cannot be reached, make sure it is still connected to the current device AP and try the device's `.local` hostname again.
-- If controls stop responding, refresh the page on the phone and reconnect the Bluetooth controller if needed.
-- Keep only one phone connected to the controller page at a time for predictable behavior.
 
 ## Connection APIs (Scaffold)
 
