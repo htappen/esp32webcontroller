@@ -13,7 +13,6 @@ WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-120}"
 WAIT_INTERVAL_SECONDS="${WAIT_INTERVAL_SECONDS:-0.05}"
 SKIP_UPLOADFS="${SKIP_UPLOADFS:-1}"
 PORT_CANDIDATES=("/dev/ttyACM0" "/dev/ttyACM1")
-RECOVERY_ATTEMPTED=0
 
 log() {
   printf '[pi-wait-upload] %s\n' "$1"
@@ -99,23 +98,6 @@ if [[ -n "${PORT}" ]]; then
   PORT_CANDIDATES=("${PORT}")
 fi
 
-try_recovery_once() {
-  if [[ "${RECOVERY_ATTEMPTED}" == "1" ]]; then
-    return 1
-  fi
-  if ! is_s3_board; then
-    return 1
-  fi
-  if [[ "${CONTROLLER_SKIP_S3_RECOVERY:-0}" == "1" ]]; then
-    log "S3 no-button recovery disabled by CONTROLLER_SKIP_S3_RECOVERY=1"
-    return 1
-  fi
-
-  RECOVERY_ATTEMPTED=1
-  log "timed out waiting for ACM; trying S3 no-button recovery"
-  CONTROLLER_BOARD=s3 "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh"
-}
-
 log "waiting for ACM port before upload"
 log "port candidates: ${PORT_CANDIDATES[*]}"
 log "board=${BOARD_OVERRIDE} host_mode=${HOST_MODE_OVERRIDE} timeout=${WAIT_TIMEOUT_SECONDS}s interval=${WAIT_INTERVAL_SECONDS}s skip_uploadfs=${SKIP_UPLOADFS}"
@@ -140,8 +122,7 @@ while true; do
         CONTROLLER_DEFAULT_STA_PASS="${STA_PASS_OVERRIDE}" \
         SKIP_UPLOADFS="${SKIP_UPLOADFS}" \
         "${ROOT_DIR}/tools/upload_firmware.sh" \
-          "${upload_args[@]}" \
-          "${candidate}"
+          "${upload_args[@]}"
     fi
   done
 
@@ -152,15 +133,8 @@ print(1 if time.monotonic() >= deadline else 0)
 PY
 )"
   if [[ "${timed_out}" == "1" ]]; then
-    if try_recovery_once; then
-      deadline_epoch="$(python3 - <<PY
-import time
-print(time.monotonic() + float(${WAIT_TIMEOUT_SECONDS}))
-PY
-)"
-      continue
-    fi
     printf '[pi-wait-upload] timed out waiting for an ACM port\n' >&2
+    printf '[pi-wait-upload] hold BOOT, tap EN/RESET, then release BOOT when /dev/ttyACM* appears\n' >&2
     exit 1
   fi
 

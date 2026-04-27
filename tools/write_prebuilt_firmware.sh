@@ -63,41 +63,6 @@ log() {
   printf '[write-prebuilt] %s\n' "$1"
 }
 
-try_s3_recovery() {
-  if [[ "${BOARD_NAME}" != "s3" ]]; then
-    return 1
-  fi
-  if [[ "${CONTROLLER_SKIP_S3_RECOVERY:-0}" == "1" ]]; then
-    log "S3 no-button recovery disabled by CONTROLLER_SKIP_S3_RECOVERY=1"
-    return 1
-  fi
-  if [[ ! -x "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh" ]]; then
-    return 1
-  fi
-
-  log "trying S3 no-button recovery before retrying direct flash"
-  CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh"
-}
-
-try_s3_jtag_flash() {
-  if [[ "${BOARD_NAME}" != "s3" ]]; then
-    return 1
-  fi
-  if [[ "${CONTROLLER_SKIP_S3_JTAG_FLASH:-0}" == "1" ]]; then
-    log "S3 GPIO-JTAG flash fallback disabled by CONTROLLER_SKIP_S3_JTAG_FLASH=1"
-    return 1
-  fi
-  if [[ ! -x "${ROOT_DIR}/tools/pi/write_prebuilt_firmware_jtag.sh" ]]; then
-    return 1
-  fi
-
-  log "serial flash unavailable; trying GPIO-JTAG prebuilt flash"
-  CONTROLLER_BOARD="${BOARD_NAME}" CONTROLLER_HOST_MODE="${HOST_MODE}" \
-    "${ROOT_DIR}/tools/pi/write_prebuilt_firmware_jtag.sh" \
-      --board "${BOARD_NAME}" \
-      --host-mode "${HOST_MODE}"
-}
-
 activate_platformio_env
 
 BOARD_NAME="$(resolve_board "${BOARD_OVERRIDE}")"
@@ -117,15 +82,8 @@ UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -z "${UPLOAD_PORT}" ]]; then
   log "no serial upload port detected"
-  if try_s3_recovery; then
-    UPLOAD_PORT="$(resolve_serial_port "" || true)"
-  fi
   if [[ -z "${UPLOAD_PORT}" ]]; then
-    if try_s3_jtag_flash; then
-      log "direct prebuilt flash complete via GPIO-JTAG"
-      exit 0
-    fi
-    log "no serial upload port detected after recovery"
+    log "put the board in ROM download mode: hold BOOT, tap EN/RESET, then release BOOT when /dev/ttyACM* appears"
     exit 1
   fi
 fi
@@ -163,20 +121,6 @@ if [[ "${ERASE_FIRST}" == "1" ]]; then
 
   if [[ "${erase_status}" -ne 0 ]]; then
     log "erase before direct flash failed with status ${erase_status}"
-    if try_s3_recovery; then
-      UPLOAD_PORT="$(resolve_serial_port "" || true)"
-      if [[ -n "${UPLOAD_PORT}" ]]; then
-        log "retrying erase before direct flash on ${UPLOAD_PORT}"
-        "${VENV_DIR}/bin/python" "${PLATFORMIO_CORE_DIR}/packages/tool-esptoolpy/esptool.py" \
-          --chip "${ESPTOOL_CHIP}" \
-          --port "${UPLOAD_PORT}" \
-          erase_flash
-      fi
-    fi
-    if try_s3_jtag_flash; then
-      log "direct prebuilt flash complete via GPIO-JTAG"
-      exit 0
-    fi
     exit "${erase_status}"
   fi
 fi
@@ -200,38 +144,7 @@ set -e
 
 if [[ "${write_status}" -ne 0 ]]; then
   log "direct prebuilt flash failed with status ${write_status}"
-  if try_s3_recovery; then
-    UPLOAD_PORT="$(resolve_serial_port "" || true)"
-    if [[ -n "${UPLOAD_PORT}" ]]; then
-      log "retrying direct prebuilt flash on ${UPLOAD_PORT}"
-      "${VENV_DIR}/bin/python" "${PLATFORMIO_CORE_DIR}/packages/tool-esptoolpy/esptool.py" \
-        --chip "${ESPTOOL_CHIP}" \
-        --port "${UPLOAD_PORT}" \
-        --before default_reset \
-        --after watchdog_reset \
-        write_flash -z \
-        --flash_mode "${FLASH_MODE}" \
-        --flash_freq "${FLASH_FREQ}" \
-        --flash_size "${FLASH_SIZE}" \
-        "${BOOTLOADER_OFFSET}" "${BOOTLOADER_BIN}" \
-        "${PARTITIONS_OFFSET}" "${PARTITIONS_BIN}" \
-        "${BOOT_APP0_OFFSET}" "${BOOT_APP0_BIN}" \
-        "${FIRMWARE_OFFSET}" "${FIRMWARE_BIN}"
-    else
-      if try_s3_jtag_flash; then
-        log "direct prebuilt flash complete via GPIO-JTAG"
-        exit 0
-      fi
-      log "no serial upload port detected after recovery"
-      exit "${write_status}"
-    fi
-  else
-    if try_s3_jtag_flash; then
-      log "direct prebuilt flash complete via GPIO-JTAG"
-      exit 0
-    fi
-    exit "${write_status}"
-  fi
+  exit "${write_status}"
 fi
 
 log "direct prebuilt flash complete"

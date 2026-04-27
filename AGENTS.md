@@ -78,31 +78,25 @@ Notes:
 
 - `tools/upload_firmware.sh` uploads the filesystem image first, then firmware, unless `--skip-uploadfs` is passed.
 - On S3, the script also requests a post-upload watchdog reset through `tools/reboot_board.sh`.
-- If no serial port is available on S3, the script can fall back to the no-button recovery and GPIO-JTAG flashing helpers already in `tools/pi/`.
+- Flashing is ACM-only on S3. If `/dev/ttyACM*` is missing, put the board into ROM download mode manually: hold `BOOT`, tap `EN` or `RESET`, then release `BOOT` after the ACM port appears.
 
 Complete S3 recovery and flash sequence:
 
-1. If the board does not come back on serial, try the no-button recovery flow:
+1. If serial flashing requires ROM download mode on your hardware, enter flash mode by holding the board `BOOT` button low, then tap `EN` or `RESET`, then release `BOOT` after the ACM port appears.
 
-```bash
-CONTROLLER_BOARD=s3 ./tools/pi/recover_s3_without_button.sh
-```
-
-2. If serial flashing requires ROM download mode on your hardware, enter flash mode by holding the board `BOOT` button low, then tap `EN` or `RESET`, then release `BOOT` after the serial port appears.
-
-3. Flash the image:
+2. Flash the image:
 
 ```bash
 ./tools/upload_firmware.sh --board s3 --host-mode usb_xinput /dev/ttyACM0
 ```
 
-4. For a direct prebuilt write with optional erase:
+3. For a direct prebuilt write with optional erase:
 
 ```bash
 ERASE_FIRST=1 ./tools/write_prebuilt_firmware.sh --board s3 --host-mode usb_xinput /dev/ttyACM0
 ```
 
-Clarification: this repo currently provides scripted Pi helpers for forcing Pi `GPIO3`/`GPIO4` low during the S3 GPIO-JTAG path, but it does not currently provide a dedicated repo helper that drives board `GPIO0` low for ROM flashing. In the supported workflow here, entering flash mode is still the board-side `BOOT`/`EN` action unless you have separate external wiring for that strap.
+Clarification: the supported flashing workflow uses the board-side `BOOT`/`EN` reset sequence and `/dev/ttyACM*`. GPIO-JTAG remains a debugging path only.
 
 If a full local smoke pass is needed, use:
 
@@ -141,7 +135,6 @@ Pi-side Python helpers should use the repo-managed venv at `~/controller-pi-e2e/
 Important Pi-side helpers include:
 
 - `tools/pi/bootstrap_pi.sh` for installing Pi prerequisites
-- `tools/pi/recover_s3_without_button.sh` for S3 recovery without physical button access
 - `tools/pi/wait_for_acm_then_upload.sh` for rapid reflashing during short S3 ACM windows
 - `tools/pi/wait_for_acm_then_write_prebuilt_firmware.sh` and `tools/write_prebuilt_firmware.sh` for direct prebuilt flashing
 
@@ -166,7 +159,6 @@ This path uses:
 Related helpers:
 
 - `tools/pi/debug_attach_noreset_s3.sh`
-- `tools/pi/flash_or_debug_s3.sh`
 - `tools/pi/reset_s3_watchdog_if_present.sh`
 - `tools/pi/set_gpio3_low.sh`
 - `tools/pi/set_gpio4_low.sh`

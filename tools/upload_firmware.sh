@@ -55,49 +55,6 @@ log() {
   printf '[upload] %s\n' "$1"
 }
 
-try_s3_recovery() {
-  if [[ "${BOARD_NAME}" != "s3" ]]; then
-    return 1
-  fi
-  if [[ "${CONTROLLER_SKIP_S3_RECOVERY:-0}" == "1" ]]; then
-    log "S3 no-button recovery disabled by CONTROLLER_SKIP_S3_RECOVERY=1"
-    return 1
-  fi
-  if [[ ! -x "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh" ]]; then
-    return 1
-  fi
-
-  log "trying S3 no-button recovery before retrying firmware update"
-  CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/pi/recover_s3_without_button.sh"
-}
-
-try_s3_jtag_firmware_flash() {
-  if [[ "${BOARD_NAME}" != "s3" ]]; then
-    return 1
-  fi
-  if [[ "${CONTROLLER_SKIP_S3_JTAG_FLASH:-0}" == "1" ]]; then
-    log "S3 GPIO-JTAG flash fallback disabled by CONTROLLER_SKIP_S3_JTAG_FLASH=1"
-    return 1
-  fi
-  if [[ ! -x "${ROOT_DIR}/tools/pi/write_prebuilt_firmware_jtag.sh" ]]; then
-    return 1
-  fi
-
-  log "building firmware image before GPIO-JTAG flash fallback"
-  (
-    cd "${FIRMWARE_DIR}"
-    pio run -e "${ENV_NAME}"
-  )
-  if [[ "${SKIP_UPLOADFS}" != "1" ]]; then
-    log "GPIO-JTAG fallback flashes firmware partitions only; filesystem image is not updated"
-  fi
-  log "serial upload unavailable; trying GPIO-JTAG firmware flash"
-  CONTROLLER_BOARD="${BOARD_NAME}" CONTROLLER_HOST_MODE="${HOST_MODE}" \
-    "${ROOT_DIR}/tools/pi/write_prebuilt_firmware_jtag.sh" \
-      --board "${BOARD_NAME}" \
-      --host-mode "${HOST_MODE}"
-}
-
 pio_run() {
   if [[ -n "${UPLOAD_PORT}" ]]; then
     pio run --upload-port "${UPLOAD_PORT}" "$@"
@@ -131,19 +88,10 @@ if [[ -n "${UPLOAD_PORT}" ]]; then
   log "using upload port: ${UPLOAD_PORT}"
 else
   log "no serial upload port detected"
-  if try_s3_recovery; then
-    UPLOAD_PORT="$(resolve_serial_port "" || true)"
-  fi
-  if [[ -z "${UPLOAD_PORT}" ]]; then
-    if try_s3_jtag_firmware_flash; then
-      log "upload complete via GPIO-JTAG"
-      exit 0
-    fi
-    log "pass a port as the first argument or set PIO_UPLOAD_PORT"
-    log "common ports: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial-*"
-    exit 1
-  fi
-  log "using upload port after recovery: ${UPLOAD_PORT}"
+  log "put the board in ROM download mode: hold BOOT, tap EN/RESET, then release BOOT when /dev/ttyACM* appears"
+  log "pass a port as the first argument or set PIO_UPLOAD_PORT"
+  log "common ports: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial-*"
+  exit 1
 fi
 
 if [[ "${SKIP_UPLOADFS}" == "1" ]]; then
@@ -160,20 +108,6 @@ else
 
   if [[ "${uploadfs_status}" -ne 0 ]]; then
     log "filesystem upload failed with status ${uploadfs_status}"
-    if try_s3_recovery; then
-      UPLOAD_PORT="$(resolve_serial_port "" || true)"
-      if [[ -n "${UPLOAD_PORT}" ]]; then
-        log "retrying filesystem upload on ${UPLOAD_PORT}"
-        (
-          cd "${FIRMWARE_DIR}"
-          pio_run -e "${ENV_NAME}" -t uploadfs
-        )
-      fi
-    fi
-    if try_s3_jtag_firmware_flash; then
-      log "upload complete via GPIO-JTAG"
-      exit 0
-    fi
     exit "${uploadfs_status}"
   fi
 fi
@@ -189,20 +123,6 @@ set -e
 
 if [[ "${upload_status}" -ne 0 ]]; then
   log "firmware upload failed with status ${upload_status}"
-  if try_s3_recovery; then
-    UPLOAD_PORT="$(resolve_serial_port "" || true)"
-    if [[ -n "${UPLOAD_PORT}" ]]; then
-      log "retrying firmware upload on ${UPLOAD_PORT}"
-      (
-        cd "${FIRMWARE_DIR}"
-        pio_run -e "${ENV_NAME}" -t upload
-      )
-    fi
-  fi
-  if try_s3_jtag_firmware_flash; then
-    log "upload complete via GPIO-JTAG"
-    exit 0
-  fi
   exit "${upload_status}"
 fi
 
@@ -214,4 +134,3 @@ if [[ "${BOARD_NAME}" == "s3" ]]; then
 fi
 
 log "upload complete"
-log "if auto-reset does not start flashing, hold BOOT, tap EN/RESET, then retry"
