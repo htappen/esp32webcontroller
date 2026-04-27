@@ -21,7 +21,8 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 ## Serial Flashing
 
 - Expected serial ports are typically `/dev/ttyUSB*` or `/dev/ttyACM*` on Linux and `/dev/cu.usbserial-*` on macOS.
-- Many USB-to-UART boards auto-reset for flashing, but some require holding `BOOT` while tapping `EN` or `RESET`.
+- S3 flashing uses the ACM port only. If it does not appear, hold `BOOT`, tap `EN` or `RESET`, then release `BOOT` when `/dev/ttyACM*` shows up.
+- Many USB-to-UART boards auto-reset for flashing, but some require the manual `BOOT`/`EN` sequence.
 
 ## Integration Checks
 
@@ -29,7 +30,7 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 - Set `CONTROLLER_HOST_MODE=ble`, `CONTROLLER_HOST_MODE=usb_switch`, or `CONTROLLER_HOST_MODE=usb_xinput` to choose the host transport where supported.
 - Optional local plaintext config can live in `tools/local.env` and is ignored by git. Copy `tools/local.env.example` and set `CONTROLLER_DEFAULT_STA_SSID` / `CONTROLLER_DEFAULT_STA_PASS` to seed saved STA credentials on first boot after a flash/erase.
 - `./tools/build_firmware.sh [--board s3|wroom] [--host-mode ble|usb_switch|usb_xinput] [--sta-ssid SSID] [--sta-pass PASS]` builds the selected PlatformIO target.
-- `./tools/upload_firmware.sh [--board s3|wroom] [--host-mode ble|usb_switch|usb_xinput] [--sta-ssid SSID] [--sta-pass PASS] [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state.
+- `./tools/upload_firmware.sh [--board s3|wroom] [--host-mode ble|usb_switch|usb_xinput] [--sta-ssid SSID] [--sta-pass PASS] [port]` flashes both LittleFS assets and firmware using the repo-local PlatformIO state. On S3, it expects the board to already be in ROM download mode on `/dev/ttyACM*`.
 - `./tools/capture_boot_log.sh [port] [seconds]` toggles reset over serial control lines and captures the boot log.
 - `./tools/hardware_integration_test.sh [--board s3|wroom] [--sta-ssid SSID] [--sta-pass PASS] [port]` rebuilds, flashes, captures boot logs, and fails if the boot banner is missing or BLE advertising starts before NimBLE host sync.
 

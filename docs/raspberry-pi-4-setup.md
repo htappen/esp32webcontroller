@@ -256,7 +256,7 @@ Useful commands on the Pi:
 
 ```bash
 cd ~/controller-pi-e2e
-./tools/pi/flash_or_debug_s3.sh
+./tools/pi/wait_for_acm_then_upload.sh --with-uploadfs
 ./tools/pi/prepare_s3_gpio_jtag.sh
 ./tools/pi/reset_s3_watchdog_if_present.sh
 ./tools/pi/start_openocd_s3_gpio_jtag.sh
@@ -264,7 +264,7 @@ cd ~/controller-pi-e2e
 ./tools/pi/stop_openocd_s3_gpio_jtag.sh
 ```
 
-Use `./tools/pi/flash_or_debug_s3.sh` as the default S3 procedure. It first runs a normal build/erase/upload/startup check with no GPIO-JTAG preparation. If that plain path fails and you move into debugging, the script now forces Pi `GPIO3` and `GPIO4` low before reset, uses the Raspberry Pi GPIO-JTAG path, and does not rely on the ESP32-S3 USB JTAG path for debugging.
+Use `./tools/pi/wait_for_acm_then_upload.sh --with-uploadfs` as the default S3 flashing procedure. It waits for the ACM port, uploads over USB serial, and stops if the board is not already in ROM download mode. If you need debugging after flashing, use the GPIO-JTAG helpers separately.
 
 The proved working USB-debug attach path uses:
 
@@ -300,7 +300,7 @@ To try the software reset path before a live attach when the board briefly shows
 ./tools/pi/reset_s3_watchdog_if_present.sh
 ```
 
-This uses the existing `esptool --after watchdog_reset` path on the first stable ACM port it sees, then falls back cleanly if no serial port is present long enough.
+This uses the existing `esptool --after watchdog_reset` path on the first stable ACM port it sees. If no serial port is present, put the board into ROM download mode manually and rerun the upload helper.
 
 ## Operational Recommendations
 
@@ -367,7 +367,7 @@ pinctrl get 3
 - For USB-path debugging, use the repo helper rather than the ESP32-S3 built-in USB JTAG path:
 
 ```bash
-./tools/pi/flash_or_debug_s3.sh
+./tools/pi/debug_startup_s3.sh
 ```
 
 - If the board is stuck in ROM flash/download mode but still briefly enumerates as `303a:1001` with `/dev/ttyACM0`, prefer the watchdog reset helper before pressing reset manually.
