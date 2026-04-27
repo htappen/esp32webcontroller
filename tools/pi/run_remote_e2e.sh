@@ -52,14 +52,7 @@ remote_env_prefix() {
 
 stage_repo_snapshot() {
   log "staging current repo snapshot on ${PI_HOST}:${REMOTE_BASE_DIR}"
-  tar -C "${ROOT_DIR}" \
-    --exclude=".git" \
-    --exclude=".venv" \
-    --exclude=".platformio" \
-    --exclude="web/node_modules" \
-    --exclude="third_party/virtual-gamepad-lib/node_modules" \
-    -cf - . \
-    | ssh "${PI_HOST}" "mkdir -p '${REMOTE_BASE_DIR}' && tar -C '${REMOTE_BASE_DIR}' -xf -"
+  PI_HOST="${PI_HOST}" REMOTE_BASE_DIR="${REMOTE_BASE_DIR}" "${ROOT_DIR}/tools/pi/sync_repo_to_pi.sh"
 }
 
 ensure_remote_env() {
@@ -77,11 +70,13 @@ stage_repo_snapshot
 ensure_remote_env
 
 log "building, flashing, and validating ${BOARD_NAME} (${HOST_MODE}) from the Pi"
-remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' ERASE_FLASH_FIRST=1 ./tools/pi/flash_or_debug_s3.sh '${PORT}'"
+remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' ./tools/pi/wait_for_acm_then_upload.sh --board '${BOARD_NAME}' --host-mode '${HOST_MODE}' --device-uuid '${CONTROLLER_DEVICE_UUID}' --port '${PORT}' --with-uploadfs"
 
 log "running remote Pi end-to-end test"
 if [[ "${HOST_MODE}" == "ble" ]]; then
   remote_exec "$(remote_env_prefix) chmod +x './tools/pi/'*.sh './tools/pi/'*.py && './tools/pi/e2e_ws_to_ble_test.sh'"
+elif [[ "${HOST_MODE}" == "usb_switch" ]]; then
+  remote_exec "$(remote_env_prefix) chmod +x './tools/pi/'*.sh './tools/pi/'*.py && './tools/pi/e2e_ws_to_switch_test.sh'"
 else
   remote_exec "$(remote_env_prefix) chmod +x './tools/pi/'*.sh './tools/pi/'*.py && './tools/pi/e2e_ws_to_usb_test.sh'"
 fi

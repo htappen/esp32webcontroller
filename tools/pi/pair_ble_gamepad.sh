@@ -20,5 +20,5 @@ fail() {
 }
 
 "${SCRIPT_DIR}/check_bluetooth.sh"
-"${SCRIPT_DIR}/setup_python_harness.sh"
+bash "${SCRIPT_DIR}/setup_python_harness.sh"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/bluez_pair_gamepad.py" --device-name "${DEVICE_NAME}" || fail "agent-based pairing failed"

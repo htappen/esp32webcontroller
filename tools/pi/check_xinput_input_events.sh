@@ -88,7 +88,7 @@ capture_case() {
 }
 
 "${SCRIPT_DIR}/bootstrap_pi.sh"
-"${SCRIPT_DIR}/setup_python_harness.sh"
+bash "${SCRIPT_DIR}/setup_python_harness.sh"
 
 log "loading xpad and joydev"
 sudo modprobe xpad

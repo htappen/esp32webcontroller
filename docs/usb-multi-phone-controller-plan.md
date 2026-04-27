@@ -27,13 +27,13 @@ Resolved requirements:
 
 ## Current State
 
-Current code is single-controller end to end.
+Core browser/session state is still single-controller, but USB transport fanout now supports multiple slots.
 
 - Firmware stores one canonical controller state in [`firmware/src/state_store.h`](/home/htappen/controller/firmware/src/state_store.h).
 - WebSocket handling tracks one boolean client presence in [`firmware/src/web_server.h`](/home/htappen/controller/firmware/src/web_server.h) and resets the single state on any disconnect/timeout in [`firmware/src/web_server.cpp`](/home/htappen/controller/firmware/src/web_server.cpp).
 - Host transport exposes one `send(report)` entrypoint in [`firmware/src/host_transport.h`](/home/htappen/controller/firmware/src/host_transport.h).
 - USB XInput implementation currently exposes one controller function with one report pipeline in [`firmware/src/usb_xinput_gamepad.cpp`](/home/htappen/controller/firmware/src/usb_xinput_gamepad.cpp).
-- USB Switch implementation currently exposes one HID gamepad instance in [`firmware/src/usb_switch_gamepad.cpp`](/home/htappen/controller/firmware/src/usb_switch_gamepad.cpp).
+- USB Switch implementation now exposes multiple HID gamepad interfaces in [`firmware/src/usb_switch_gamepad.cpp`](/home/htappen/controller/firmware/src/usb_switch_gamepad.cpp).
 - Browser UI assumes one connection and only shows generic browser-link state in [`web/src/page_state_controller.js`](/home/htappen/controller/web/src/page_state_controller.js).
 
 ## USB Device Shape
@@ -195,19 +195,18 @@ Implementation plan should include an early prototype:
 
 ### 7. Switch multi-controller path
 
-Refactor `usb_switch_gamepad.*` from one `USBHIDDevice` instance to multiple HID gamepad interfaces or multiple reports, depending on what the target host accepts.
+`usb_switch_gamepad.*` now uses multiple HID gamepad interfaces, one per slot.
 
 Work items:
 
-- create one HID gamepad function per slot
 - maintain per-slot report objects
 - map slot add/remove to ready/neutral behavior
-- test whether target Switch host accepts multiple controllers from one composite device
+- verify the target Switch host keeps enumerating all controller interfaces across reconnects
 
 Risk:
 
 - “USB Switch” may require host-specific expectations that differ from generic HID multi-gamepad support.
-- since XInput is the first target, Switch work should stay behind the XInput validation milestone
+- keep the Pi-side count test aligned with the expected four-controller enumeration
 
 ### 8. Disconnect and idle semantics
 

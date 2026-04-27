@@ -2,11 +2,12 @@
 import argparse
 import json
 import os
-import re
 import select
 import struct
 import sys
 import time
+
+from controller_test_core import find_event_device, find_event_devices, parse_hex
 
 EVENT_STRUCT = struct.Struct("@llHHi")
 EV_SYN = 0
@@ -38,34 +39,6 @@ ABS_NAMES = {
 }
 
 
-def find_event_device_once(device_name: str) -> str:
-    with open("/proc/bus/input/devices", "r", encoding="utf-8") as handle:
-        blocks = handle.read().strip().split("\n\n")
-
-    for block in blocks:
-        name_match = re.search(r'^N: Name="(.+)"$', block, flags=re.MULTILINE)
-        handler_match = re.search(r"^H: Handlers=(.+)$", block, flags=re.MULTILINE)
-        if not name_match or not handler_match:
-            continue
-        if name_match.group(1) != device_name:
-            continue
-        for handler in handler_match.group(1).split():
-            if handler.startswith("event"):
-                return os.path.join("/dev/input", handler)
-    raise FileNotFoundError(f"input device not found for {device_name!r}")
-
-
-def find_event_device(device_name: str, wait_timeout: float) -> str:
-    deadline = time.monotonic() + wait_timeout
-    while True:
-        try:
-            return find_event_device_once(device_name)
-        except FileNotFoundError:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(0.2)
-
-
 def event_name(event_type: int, code: int) -> str:
     if event_type == EV_KEY:
         return KEY_NAMES.get(code, f"KEY_{code}")
@@ -76,37 +49,40 @@ def event_name(event_type: int, code: int) -> str:
     return f"TYPE_{event_type}_{code}"
 
 
-def capture(device_path: str, duration: float, output_path: str | None) -> None:
+def capture(device_paths: list[str], duration: float, output_path: str | None) -> None:
     deadline = time.monotonic() + duration
     stream = open(output_path, "w", encoding="utf-8") if output_path else sys.stdout
-    fd = os.open(device_path, os.O_RDONLY | os.O_NONBLOCK)
+    fds = {os.open(device_path, os.O_RDONLY | os.O_NONBLOCK): device_path for device_path in device_paths}
     try:
-      while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        readable, _, _ = select.select([fd], [], [], remaining)
-        if not readable:
-            continue
-        payload = os.read(fd, EVENT_STRUCT.size * 64)
-        if not payload:
-            continue
-        for offset in range(0, len(payload) - EVENT_STRUCT.size + 1, EVENT_STRUCT.size):
-            sec, usec, event_type, code, value = EVENT_STRUCT.unpack(
-                payload[offset : offset + EVENT_STRUCT.size]
-            )
-            item = {
-                "sec": sec,
-                "usec": usec,
-                "type": event_type,
-                "code": code,
-                "value": value,
-                "name": event_name(event_type, code),
-            }
-            stream.write(json.dumps(item, separators=(",", ":")) + "\n")
-            stream.flush()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            readable, _, _ = select.select(list(fds.keys()), [], [], remaining)
+            if not readable:
+                continue
+            for fd in readable:
+                payload = os.read(fd, EVENT_STRUCT.size * 64)
+                if not payload:
+                    continue
+                for offset in range(0, len(payload) - EVENT_STRUCT.size + 1, EVENT_STRUCT.size):
+                    sec, usec, event_type, code, value = EVENT_STRUCT.unpack(
+                        payload[offset : offset + EVENT_STRUCT.size]
+                    )
+                    item = {
+                        "device": fds[fd],
+                        "sec": sec,
+                        "usec": usec,
+                        "type": event_type,
+                        "code": code,
+                        "value": value,
+                        "name": event_name(event_type, code),
+                    }
+                    stream.write(json.dumps(item, separators=(",", ":")) + "\n")
+                    stream.flush()
     finally:
-        os.close(fd)
+        for fd in fds:
+            os.close(fd)
         if output_path:
             stream.close()
 
@@ -115,22 +91,43 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device")
     parser.add_argument("--device-name")
+    parser.add_argument("--usb-vid")
+    parser.add_argument("--usb-pid")
     parser.add_argument("--print-device", action="store_true")
+    parser.add_argument("--all-matching", action="store_true")
     parser.add_argument("--duration", type=float, default=1.0)
     parser.add_argument("--output")
     parser.add_argument("--wait-timeout", type=float, default=0.0)
     args = parser.parse_args()
 
-    if not args.device and not args.device_name:
-        parser.error("pass --device or --device-name")
+    if args.device and (args.device_name or args.usb_vid or args.usb_pid):
+        parser.error("pass only one device selector")
+    if args.device_name and (args.usb_vid or args.usb_pid):
+        parser.error("pass only one device selector")
+    if bool(args.usb_vid) != bool(args.usb_pid):
+        parser.error("pass both --usb-vid and --usb-pid together")
+    if not args.device and not args.device_name and not args.usb_vid:
+        parser.error("pass --device, --device-name, or --usb-vid/--usb-pid")
 
-    device_path = args.device or find_event_device(args.device_name, args.wait_timeout)
+    usb_vid = parse_hex(args.usb_vid) if args.usb_vid else None
+    usb_pid = parse_hex(args.usb_pid) if args.usb_pid else None
+
+    if args.all_matching:
+        device_paths = find_event_devices(args.device_name, usb_vid, usb_pid, args.wait_timeout)
+        if args.print_device:
+            for device_path in device_paths:
+                print(device_path)
+            return 0
+        capture(device_paths, args.duration, args.output)
+        return 0
+
+    device_path = args.device or find_event_device(args.device_name, usb_vid, usb_pid, args.wait_timeout)
 
     if args.print_device:
         print(device_path)
         return 0
 
-    capture(device_path, args.duration, args.output)
+    capture([device_path], args.duration, args.output)
     return 0
 
 

@@ -13,6 +13,7 @@
 #include "config.h"
 #include "device/usbd.h"
 #include "device/usbd_pvt.h"
+#include "multi_controller_util.h"
 #include "esp32-hal-tinyusb.h"
 #include "esp_rom_sys.h"
 
@@ -578,15 +579,12 @@ bool UsbXInputGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t r
   }
 
   bool ok = true;
-  g_active_slots = 0;
-  const uint8_t capped_count = report_count > config::kMaxControllerSlots ? config::kMaxControllerSlots : report_count;
+  g_active_slots = multi_controller::countActiveSlots(report_count, active_slot_mask);
+  const uint8_t capped_count = multi_controller::cappedReportCount(report_count);
   for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    const bool active = i < capped_count && (active_slot_mask & (1u << i)) != 0;
+    const bool active = i < capped_count && multi_controller::slotIsActive(active_slot_mask, i);
     const XInputControlReport report = active ? reportFromHostInput(reports[i]) : XInputControlReport{};
     ok = queueSlotReport(i, report) && ok;
-    if (active) {
-      ++g_active_slots;
-    }
   }
   return ok;
 }

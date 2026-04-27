@@ -83,10 +83,10 @@ sudo openocd \
   -f "${OPENOCD_BOARD_CFG}" \
   -c "init" \
   -c "reset halt" \
-  -c "program_esp ${BOOTLOADER_BIN} ${BOOTLOADER_OFFSET} verify" \
-  -c "program_esp ${PARTITIONS_BIN} ${PARTITIONS_OFFSET} verify" \
-  -c "program_esp ${BOOT_APP0_BIN} ${BOOT_APP0_OFFSET} verify" \
-  -c "program_esp ${FIRMWARE_BIN} ${FIRMWARE_OFFSET} verify" \
+  -c "program ${BOOTLOADER_BIN} ${BOOTLOADER_OFFSET} verify" \
+  -c "program ${PARTITIONS_BIN} ${PARTITIONS_OFFSET} verify" \
+  -c "program ${BOOT_APP0_BIN} ${BOOT_APP0_OFFSET} verify" \
+  -c "program ${FIRMWARE_BIN} ${FIRMWARE_OFFSET} verify" \
   -c "reset run" \
   -c "shutdown" \
   >"${OPENOCD_LOG}" 2>&1
