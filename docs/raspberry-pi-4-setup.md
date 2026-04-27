@@ -170,7 +170,13 @@ The top-level `./tools/pi/run_remote_e2e.sh` script stages the current tracked r
 If you are running Pi-side flash, debug, or validation commands manually instead of `./tools/pi/run_remote_e2e.sh`, sync the current repo contents to `~/controller-pi-e2e` first. A working pattern from ChromeOS is:
 
 ```bash
-tar -C /home/htappen/controller --exclude=.git --exclude=.venv --exclude=.platformio --exclude=web/node_modules --exclude=third_party/virtual-gamepad-lib/node_modules -cf - . | ssh controller-pi 'cd /home/controller/controller-pi-e2e && tar -xf -'
+./tools/pi/sync_repo_to_pi.sh
+```
+
+After syncing, make Pi-side shell helpers executable if you plan to run them manually:
+
+```bash
+chmod +x ~/controller-pi-e2e/tools/pi/*.sh ~/controller-pi-e2e/tools/pi/*.py
 ```
 
 Do not rely on an older Pi checkout when firmware, web assets, or Pi-side test helpers changed locally.

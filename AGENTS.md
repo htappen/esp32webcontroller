@@ -118,10 +118,16 @@ CONTROLLER_BOARD=s3 CONTROLLER_HOST_MODE=usb_xinput ./tools/pi/run_remote_e2e.sh
 CONTROLLER_BOARD=wroom CONTROLLER_HOST_MODE=ble ./tools/pi/run_remote_e2e.sh /dev/ttyUSB0
 ```
 
-If you are running Pi commands manually over SSH instead of `run_remote_e2e.sh`, sync the repo first, for example:
+If you are running Pi commands manually over SSH instead of `run_remote_e2e.sh`, sync the repo first:
 
 ```bash
-tar -C /home/htappen/controller --exclude=.git --exclude=.venv --exclude=.platformio --exclude=web/node_modules --exclude=third_party/virtual-gamepad-lib/node_modules -cf - . | ssh controller-pi 'cd /home/controller/controller-pi-e2e && tar -xf -'
+./tools/pi/sync_repo_to_pi.sh
+```
+
+After syncing, make Pi-side shell helpers executable if needed before invoking them manually:
+
+```bash
+chmod +x ./tools/pi/*.sh ./tools/pi/*.py
 ```
 
 For focused XInput input-event validation on the Pi host:
@@ -130,7 +136,7 @@ For focused XInput input-event validation on the Pi host:
 ./tools/pi/check_xinput_input_events.sh
 ```
 
-Pi-side Python helpers should use the repo-managed venv at `~/controller-pi-e2e/tools/pi/.venv-pi/bin/python`. Do not assume the global `python3` or an activated shell venv is the interpreter running a given helper.
+Pi-side Python helpers should use the repo-managed venv at `~/controller-pi-e2e/tools/pi/.venv-pi/bin/python`. Do not assume the global `python3`, a host venv, or an activated shell venv is the interpreter running a given helper.
 
 Important Pi-side helpers include:
 

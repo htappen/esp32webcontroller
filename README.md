@@ -79,7 +79,7 @@ Want to fork or add? Here's a bunch of info
 Use the Pi runner when the board is physically connected to the Raspberry Pi instead of the development machine.
 
 - The first positional port for `./tools/pi/run_remote_e2e.sh` is the serial device path on the Pi, not the local workstation.
-- The script stages the current tracked repo snapshot to the Pi, ensures the Pi-side repo environment exists, then builds, flashes, captures boot logs, and runs the Pi-side tests there.
+- The script stages the current tracked repo snapshot to the Pi with `./tools/pi/sync_repo_to_pi.sh`, ensures the Pi-side repo environment exists, then builds, flashes, captures boot logs, and runs the Pi-side tests there.
 - Example BLE run: `./tools/pi/run_remote_e2e.sh /dev/ttyACM0`
 - Example USB XInput run: `CONTROLLER_HOST_MODE=usb_xinput ./tools/pi/run_remote_e2e.sh /dev/ttyACM0`
 - Override the Pi target with `PI_HOST=controller-pi` or `REMOTE_BASE_DIR=/home/controller/controller-pi-e2e` as needed.
