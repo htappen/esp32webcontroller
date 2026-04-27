@@ -61,7 +61,7 @@ Want to fork or add? Here's a bunch of info
   - `AP+STA mode`: keep AP active as fallback while joining shared Wi-Fi.
 - Host connectivity:
   - BLE builds advertise as a BLE HID gamepad.
-  - `usb_switch` builds enumerate as a wired USB controller for Switch-style hosts.
+  - `usb_switch` builds enumerate as multiple wired USB controllers for Switch-style hosts, using the same standard HID gamepad shape as the Switch-oriented Arduino/TinyUSB libraries.
   - `usb_xinput` builds enumerate as a wired Xbox 360 class device using a custom TinyUSB class-driver backend modeled on `gp2040-ce`.
 - Controller data path:
   - Browser sends controller packets via WebSocket to `ws://<device-hostname>.local:81` when the controller is opened by hostname.

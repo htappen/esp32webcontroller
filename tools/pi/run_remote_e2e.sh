@@ -12,6 +12,10 @@ RUN_STA_TESTS="${RUN_STA_TESTS:-auto}"
 BOARD_NAME="${CONTROLLER_BOARD:-s3}"
 HOST_MODE="${CONTROLLER_HOST_MODE:-ble}"
 DEVICE_UUID="${CONTROLLER_DEVICE_UUID:-${DEFAULT_TEST_DEVICE_UUID}}"
+SERIAL_PORT="${PI_SERIAL_PORT:-}"
+if [[ "${BOARD_NAME}" == "wroom" && -z "${SERIAL_PORT}" ]]; then
+  SERIAL_PORT="${PORT}"
+fi
 
 has_sta_test_config() {
   if [[ -n "${TEST_STA_SSID:-}" ]]; then
@@ -36,7 +40,7 @@ resolve_test_identity() {
 }
 
 remote_env_prefix() {
-  printf "AP_SSID='%s' BLE_NAME='%s' PAGE_URL='%s' MDNS_HTTP_BASE_URL='%s' HTTP_BASE_URL='%s' WS_URL='ws://%s.local:81' CONTROLLER_HOSTNAME='%s' CONTROLLER_LOCAL_URL='%s' EXPECTED_TRANSPORT='%s' EXPECTED_VARIANT='%s' CONTROLLER_DEVICE_UUID='%s'" \
+  printf "AP_SSID='%s' BLE_NAME='%s' PAGE_URL='%s' MDNS_HTTP_BASE_URL='%s' HTTP_BASE_URL='%s' WS_URL='ws://%s.local:81' CONTROLLER_HOSTNAME='%s' CONTROLLER_LOCAL_URL='%s' EXPECTED_TRANSPORT='%s' EXPECTED_VARIANT='%s' CONTROLLER_DEVICE_UUID='%s' CONTROLLER_DEBUG_LOGS='%s' PI_SERIAL_PORT='%s'" \
     "${CONTROLLER_DEVICE_AP_SSID}" \
     "${CONTROLLER_DEVICE_BLE_NAME}" \
     "${CONTROLLER_DEVICE_LOCAL_URL}" \
@@ -47,7 +51,9 @@ remote_env_prefix() {
     "${CONTROLLER_DEVICE_LOCAL_URL}" \
     "$([[ "${HOST_MODE}" == "ble" ]] && printf 'ble' || printf 'usb')" \
     "$([[ "${HOST_MODE}" == "usb_xinput" ]] && printf 'pc' || ([[ "${HOST_MODE}" == "usb_switch" ]] && printf 'switch' || printf 'default'))" \
-    "${CONTROLLER_DEVICE_UUID}"
+    "${CONTROLLER_DEVICE_UUID}" \
+    "${CONTROLLER_DEBUG_LOGS:-0}" \
+    "${SERIAL_PORT}"
 }
 
 stage_repo_snapshot() {
@@ -70,7 +76,7 @@ stage_repo_snapshot
 ensure_remote_env
 
 log "building, flashing, and validating ${BOARD_NAME} (${HOST_MODE}) from the Pi"
-remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' ./tools/pi/wait_for_acm_then_upload.sh --board '${BOARD_NAME}' --host-mode '${HOST_MODE}' --device-uuid '${CONTROLLER_DEVICE_UUID}' --port '${PORT}' --with-uploadfs"
+remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' CONTROLLER_DEBUG_LOGS='${CONTROLLER_DEBUG_LOGS:-0}' ./tools/pi/wait_for_acm_then_upload.sh --board '${BOARD_NAME}' --host-mode '${HOST_MODE}' --device-uuid '${CONTROLLER_DEVICE_UUID}' --port '${PORT}' --with-uploadfs"
 
 log "running remote Pi end-to-end test"
 if [[ "${HOST_MODE}" == "ble" ]]; then

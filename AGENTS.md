@@ -21,6 +21,8 @@ For this workspace, assume the physical ESP32-S3 board is connected to the Raspb
 
 - Prefer Pi-side flash/debug/test flows for S3 hardware work.
 - Do not assume `/dev/ttyACM*` will appear on the local machine.
+- For USB-mode S3 runtime logs, use the Raspberry Pi UART wiring and capture logs from the Pi UART device, not from `/dev/ttyACM*`. BLE-only validation does not need the UART log path.
+- Set `CONTROLLER_DEBUG_LOGS=1` when you want the firmware to compile in debug logging. In that mode, Pi USB tests should assert that UART logging is actually present, and WROOM BLE tests should capture the board's USB-UART serial port.
 - When a task needs flashing or hardware validation, use the Pi helpers in `tools/pi/` first.
 - If manual button timing is needed for ROM download mode, start the appropriate wait/upload helper and then ask the user to press `BOOT`/`EN`.
 
@@ -29,6 +31,7 @@ Board and use-case guidance:
 - Use `CONTROLLER_BOARD=wroom` with `CONTROLLER_HOST_MODE=ble` for the classic Bluetooth gamepad path.
 - Use `CONTROLLER_BOARD=s3` with `CONTROLLER_HOST_MODE=usb_xinput` for Windows/XInput-style wired USB host mode.
 - Use `CONTROLLER_BOARD=s3` with `CONTROLLER_HOST_MODE=usb_switch` for the Switch-oriented USB mode.
+- Treat `usb_switch` as a multi-controller transport, same as `usb_xinput`: preserve `sendSlots()` semantics and per-slot USB enumeration when changing this path.
 - Use `CONTROLLER_BOARD=s3` with `CONTROLLER_HOST_MODE=ble` only when specifically validating BLE behavior on S3.
 
 # Build, Flash, And Debug
@@ -138,6 +141,12 @@ For focused XInput input-event validation on the Pi host:
 
 Pi-side Python helpers should use the repo-managed venv at `~/controller-pi-e2e/tools/pi/.venv-pi/bin/python`. Do not assume the global `python3`, a host venv, or an activated shell venv is the interpreter running a given helper.
 
+Serial-log guidance:
+
+- For S3 USB-mode runtime logs, use the Pi UART path and `PI_UART_PORT` if you need to override the default `/dev/serial0`.
+- For WROOM debug logs, use the board's USB-UART port and `PI_SERIAL_PORT` if you need to override auto-detection.
+- In debug mode, Pi tests should fail if the expected serial log path is missing or produces no output.
+
 Important Pi-side helpers include:
 
 - `tools/pi/bootstrap_pi.sh` for installing Pi prerequisites
@@ -147,6 +156,9 @@ Important Pi-side helpers include:
 ## Debugging
 
 For ESP32-S3 USB debugging, the preferred path is Raspberry Pi GPIO-JTAG, not the built-in USB JTAG route.
+Use GPIO-JTAG when debugging USB transport behavior on S3, especially when the device enumerates but reports do not reach the host or the WebSocket path stops advancing after reboot.
+Use the Pi UART for runtime serial logs in USB mode; do not rely on `/dev/ttyACM*` for those logs. BLE mode can keep using the existing serial path if needed.
+If GPIO-JTAG fails to attach or the target ends up in a bad state, restart or power-cycle the board before retrying the debug helper. In practice, that usually means a fresh board reset or unplug/replug cycle on the Pi-connected S3.
 
 Primary helper:
 

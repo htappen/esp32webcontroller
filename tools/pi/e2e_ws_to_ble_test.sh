@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/../lib/device_identity.sh"
+source "${SCRIPT_DIR}/../lib/esp32_common.sh"
 resolve_device_identity "test" "${CONTROLLER_DEVICE_UUID:-}"
 
 AP_SSID="${AP_SSID:-${CONTROLLER_DEVICE_AP_SSID}}"
@@ -16,19 +16,51 @@ WS_URL="${WS_URL:-ws://192.168.4.1:81}"
 EXPECTED_AP_IP="${EXPECTED_AP_IP:-192.168.4.1}"
 EXPECTED_AP_ACTIVE="${EXPECTED_AP_ACTIVE:-1}"
 EXPECTED_STA_CONNECTED="${EXPECTED_STA_CONNECTED:-0}"
+EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-1}"
 EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-${CONTROLLER_DEVICE_HOSTNAME}}"
 EXPECTED_LOCAL_URL="${EXPECTED_LOCAL_URL:-${CONTROLLER_DEVICE_LOCAL_URL}}"
 EXPECTED_FRIENDLY_NAME="${EXPECTED_FRIENDLY_NAME:-${CONTROLLER_DEVICE_FRIENDLY_NAME}}"
+UART_PORT="${PI_SERIAL_PORT:-}"
+if [[ -z "${UART_PORT}" ]]; then
+  UART_PORT="$(resolve_serial_port "" || true)"
+fi
+DEBUG_LOGS_REQUIRED="${CONTROLLER_DEBUG_LOGS:-0}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "${TMP_DIR}"
 }
-trap cleanup EXIT
+trap 'stop_serial_log; cleanup' EXIT
 
 log() {
   printf '[pi-e2e] %s\n' "$1"
+}
+
+serial_log_file="${TMP_DIR}/serial.log"
+serial_log_pid=""
+
+start_serial_log() {
+  local serial_port="${1:-${UART_PORT}}"
+  if [[ -z "${serial_port}" || ! -e "${serial_port}" ]]; then
+    if [[ "${DEBUG_LOGS_REQUIRED}" == "1" ]]; then
+      log "expected serial port for debug logging but none was available at ${serial_port:-<unset>}"
+      return 1
+    fi
+    log "no serial port available for logging at ${serial_port:-<unset>}"
+    return 0
+  fi
+  log "capturing serial log from ${serial_port}"
+  bash "${SCRIPT_DIR}/capture_uart_log.sh" "${serial_port}" 9999 "${serial_log_file}" &
+  serial_log_pid=$!
+  sleep 0.2
+}
+
+stop_serial_log() {
+  if [[ -n "${serial_log_pid}" ]]; then
+    kill "${serial_log_pid}" >/dev/null 2>&1 || true
+    serial_log_pid=""
+  fi
 }
 
 fail() {
@@ -188,13 +220,25 @@ capture_case() {
   "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --duration "${duration}" --output "${log_file}" &
   local capture_pid=$!
   sleep 0.2
+  start_serial_log
+  set +e
   "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}"
+  local send_status=$?
+  set -e
+  stop_serial_log
   wait "${capture_pid}"
+  if [[ "${send_status}" -ne 0 ]]; then
+    fail "websocket packet send failed for ${name}"
+  fi
+  if [[ "${DEBUG_LOGS_REQUIRED}" == "1" && ! -s "${serial_log_file}" ]]; then
+    printf '[pi-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
+    exit 1
+  fi
   printf '%s\n' "${log_file}"
 }
 
 "${SCRIPT_DIR}/bootstrap_pi.sh"
-"${SCRIPT_DIR}/setup_python_harness.sh"
+bash "${SCRIPT_DIR}/setup_python_harness.sh"
 ensure_controller_reachable
 "${SCRIPT_DIR}/check_bluetooth.sh"
 
@@ -227,6 +271,13 @@ PAIR_OUTPUT="$("${SCRIPT_DIR}/pair_ble_gamepad.sh" "${BLE_NAME}")"
 printf '%s\n' "${PAIR_OUTPUT}"
 EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "${BLE_NAME}" --wait-timeout 10 --print-device)"
 log "using input event device ${EVENT_DEVICE}"
+
+controller_count="$("${VENV_PYTHON}" "${SCRIPT_DIR}/controller_test_core.py" count-devices --device-name "${BLE_NAME}")"
+if [[ "${controller_count}" != "${EXPECTED_CONTROLLER_COUNT}" ]]; then
+  printf '[pi-e2e] expected %s Bluetooth controller, found %s\n' "${EXPECTED_CONTROLLER_COUNT}" "${controller_count}" >&2
+  exit 1
+fi
+log "saw ${controller_count} Bluetooth controller"
 
 cat > "${TMP_DIR}/neutral.json" <<'JSON'
 {"t":1,"seq":1,"btn":{"a":0,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}

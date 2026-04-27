@@ -176,7 +176,7 @@ run_shared_network_e2e() {
 
 require_sta_creds
 "${SCRIPT_DIR}/bootstrap_pi.sh"
-"${SCRIPT_DIR}/setup_python_harness.sh"
+bash "${SCRIPT_DIR}/setup_python_harness.sh"
 
 case "${PHASE}" in
   good-transition)

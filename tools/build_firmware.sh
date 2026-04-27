@@ -58,6 +58,9 @@ fi
 if [[ "${CONTROLLER_USB_XINPUT_DEFER_BEGIN:-0}" == "1" ]]; then
   printf '[build] deferring USB.begin() for usb_xinput diagnostics\n'
 fi
+if [[ "${CONTROLLER_DEBUG_LOGS:-0}" == "1" ]]; then
+  printf '[build] enabling debug logging build mode\n'
+fi
 (
   cd "${FIRMWARE_DIR}"
   pio run -e "${ENV_NAME}"

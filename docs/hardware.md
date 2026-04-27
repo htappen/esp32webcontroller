@@ -31,6 +31,12 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 - This UART log path is for USB-mode runtime debugging only. BLE validation does not need it.
 - Enable the logging code with `CONTROLLER_DEBUG_LOGS=1`; in that build mode the Pi USB tests should fail if no UART output is captured.
 
+## WROOM Serial Logs
+
+- For ESP32-WROOM BLE debugging, capture the board's USB-UART bridge instead of the Pi GPIO UART.
+- The Pi-side serial device is usually `/dev/ttyUSB*`, and Pi tests can override or pin that path with `PI_SERIAL_PORT`.
+- Enable the logging code with `CONTROLLER_DEBUG_LOGS=1`; in that build mode the WROOM BLE tests should fail if no serial output is captured.
+
 ## Integration Checks
 
 - Set `CONTROLLER_BOARD=s3` or `CONTROLLER_BOARD=wroom` to choose the default build, flash, and test target in your shell.

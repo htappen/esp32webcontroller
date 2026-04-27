@@ -82,6 +82,9 @@ fi
 if [[ "${CONTROLLER_USB_XINPUT_DEFER_BEGIN:-0}" == "1" ]]; then
   log "deferring USB.begin() for usb_xinput diagnostics"
 fi
+if [[ "${CONTROLLER_DEBUG_LOGS:-0}" == "1" ]]; then
+  log "enabling debug logging build mode"
+fi
 UPLOAD_PORT="$(resolve_serial_port "${UPLOAD_PORT}" || true)"
 
 if [[ -n "${UPLOAD_PORT}" ]]; then
