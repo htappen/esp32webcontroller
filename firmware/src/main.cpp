@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "controller_session_manager.h"
+#include "debug_log.h"
 #include "config.h"
 #include "device_settings.h"
 #include "host_connection.h"
@@ -20,7 +21,7 @@ uint32_t g_last_report_ms = 0;
 }
 
 void setup() {
-  Serial.begin(115200);
+  debug_log::begin();
   delay(200);
   g_sessions.reset();
   g_network.begin();
@@ -28,12 +29,12 @@ void setup() {
   g_sessions.setCapacity(strcmp(g_host.status().transport, "usb") == 0 ? config::kMaxControllerSlots : 1);
   g_web.begin();
 #if defined(CONTROLLER_BOARD_WROOM)
-  Serial.printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
+  debug_log::printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
 #elif defined(CONTROLLER_BOARD_S3)
-  Serial.printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
+  debug_log::printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
 #endif
-  Serial.printf("Device identity: uuid=%s name=%s hostname=%s local=%s\n", config::kDeviceUuid,
-                config::kFriendlyName, config::kApHostname, config::kLocalUrl);
+  debug_log::printf("Device identity: uuid=%s name=%s hostname=%s local=%s\n", config::kDeviceUuid,
+                    config::kFriendlyName, config::kApHostname, config::kLocalUrl);
 }
 
 void loop() {

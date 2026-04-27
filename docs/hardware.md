@@ -24,6 +24,13 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 - S3 flashing uses the ACM port only. If it does not appear, hold `BOOT`, tap `EN` or `RESET`, then release `BOOT` when `/dev/ttyACM*` shows up.
 - Many USB-to-UART boards auto-reset for flashing, but some require the manual `BOOT`/`EN` sequence.
 
+## UART Logs For USB Mode
+
+- For ESP32-S3 `usb_switch` and `usb_xinput` debugging, route firmware logs over a separate UART connection to the Raspberry Pi.
+- Use the Pi UART pins, typically `GPIO14`/`GPIO15`, and capture logs from the Pi UART device such as `/dev/serial0`.
+- This UART log path is for USB-mode runtime debugging only. BLE validation does not need it.
+- Enable the logging code with `CONTROLLER_DEBUG_LOGS=1`; in that build mode the Pi USB tests should fail if no UART output is captured.
+
 ## Integration Checks
 
 - Set `CONTROLLER_BOARD=s3` or `CONTROLLER_BOARD=wroom` to choose the default build, flash, and test target in your shell.

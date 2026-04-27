@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
+#include "debug_log.h"
 #include "config.h"
 
 namespace {
@@ -27,7 +28,7 @@ bool BleGamepadBridge::begin() {
   started_ = true;
   advertising_configured_ = false;
   next_advertising_attempt_ms_ = millis() + kAdvertisingInitialDelayMs;
-  Serial.printf("BLE host ready: board=%s profile=xbox-one-s\n", config::kBoardName);
+  debug_log::printf("BLE host ready: board=%s profile=xbox-one-s\n", config::kBoardName);
   return true;
 }
 
@@ -55,13 +56,13 @@ void BleGamepadBridge::loop() {
   }
 
   if (advertising->start()) {
-    Serial.printf("BLE advertising started: board=%s profile=xbox-one-s\n", config::kBoardName);
+    debug_log::printf("BLE advertising started: board=%s profile=xbox-one-s\n", config::kBoardName);
     next_advertising_attempt_ms_ = now;
     return;
   }
 
-  Serial.printf("BLE advertising start failed; retrying in %lu ms\n",
-                static_cast<unsigned long>(kAdvertisingRetryMs));
+  debug_log::printf("BLE advertising start failed; retrying in %lu ms\n",
+                    static_cast<unsigned long>(kAdvertisingRetryMs));
   next_advertising_attempt_ms_ = now + kAdvertisingRetryMs;
 }
 
@@ -74,7 +75,7 @@ void BleGamepadBridge::configureAdvertising() {
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 #if defined(CONTROLLER_BOARD_S3)
   if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_PUBLIC)) {
-    Serial.println("BLE failed to force public address type on S3");
+    debug_log::println("BLE failed to force public address type on S3");
   }
 #endif
   advertising->enableScanResponse(true);
@@ -132,7 +133,7 @@ void BleGamepadBridge::setAdvertisingEnabled(bool enabled) {
 
   server->advertiseOnDisconnect(enabled);
   if (!enabled) {
-    Serial.println("BLE advertising disabled");
+    debug_log::println("BLE advertising disabled");
     advertising->stop();
   }
 }

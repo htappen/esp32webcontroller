@@ -272,11 +272,15 @@ cd ~/controller-pi-e2e
 
 Use `./tools/pi/wait_for_acm_then_upload.sh --with-uploadfs` as the default S3 flashing procedure. It waits for the ACM port, uploads over USB serial, and stops if the board is not already in ROM download mode. If you need debugging after flashing, use the GPIO-JTAG helpers separately.
 
+For USB-mode runtime logs, wire the ESP32-S3 UART to the Pi UART pins and capture from the Pi UART device such as `/dev/serial0`. That log path is for `usb_switch` and `usb_xinput` only; BLE mode can keep using the existing serial setup if needed.
+Set `CONTROLLER_DEBUG_LOGS=1` when you want the firmware to compile in UART logging and have the Pi-side USB tests assert that the serial path is live.
+
 The proved working USB-debug attach path uses:
 
 - Pi `GPIO3` low before board reset
 - Pi `GPIO4` low before board reset
 - best-effort serial watchdog reset on `/dev/ttyACM0` or `/dev/ttyACM1` if the ROM USB ACM port is currently visible
+- Pi UART capture on `/dev/serial0` for USB-mode runtime logs, if the UART wiring is in place
 - single-core `cpu0` OpenOCD attach via `ESP32_S3_ONLYCPU 1`
 - `target extended-remote :3333` in GDB
 

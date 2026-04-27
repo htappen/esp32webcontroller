@@ -11,3 +11,7 @@ def env_flag_enabled(name: str) -> bool:
 if env_flag_enabled("CONTROLLER_USB_XINPUT_DEFER_BEGIN"):
     print("[pio] enabling deferred USB.begin() for usb_xinput")
     env.Append(CPPDEFINES=[("CONTROLLER_USB_XINPUT_DEFER_BEGIN", 1)])
+
+if env_flag_enabled("CONTROLLER_DEBUG_LOGS"):
+    print("[pio] enabling debug logging build mode")
+    env.Append(CPPDEFINES=[("CONTROLLER_DEBUG_LOGS", 1)])

@@ -1,6 +1,9 @@
 #include "controller_session_manager.h"
 
+#include <Arduino.h>
 #include <string.h>
+
+#include "debug_log.h"
 
 namespace {
 uint8_t clamp_capacity(uint8_t slots) {
@@ -49,6 +52,8 @@ ControllerBindOutcome ControllerSessionManager::bindClient(uint8_t ws_client_num
     slot.last_packet_ms = now_ms;
     slot.grace_deadline_ms = 0;
     slot.state = ControllerState{};
+    debug_log::printf("[session] rebound client_id=%s ws=%u slot=%u result=%u\n", client_id, ws_client_num,
+                      outcome.slot_number, static_cast<unsigned>(outcome.result));
     return outcome;
   }
 
@@ -68,6 +73,8 @@ ControllerBindOutcome ControllerSessionManager::bindClient(uint8_t ws_client_num
   slot.client_id[sizeof(slot.client_id) - 1] = '\0';
   outcome.result = ControllerBindResult::kAssigned;
   outcome.slot_number = static_cast<uint8_t>(slot_index + 1);
+  debug_log::printf("[session] assigned client_id=%s ws=%u slot=%u\n", slot.client_id, ws_client_num,
+                    outcome.slot_number);
   return outcome;
 }
 
@@ -97,6 +104,8 @@ bool ControllerSessionManager::applyStateForClient(uint8_t ws_client_num, const 
   slot.state = next;
   slot.state.last_update_ms = now_ms;
   slot.last_packet_ms = now_ms;
+  debug_log::printf("[session] applied ws=%u slot=%u seq=%lu\n", ws_client_num,
+                    static_cast<unsigned>(slot_index + 1), static_cast<unsigned long>(next.seq));
   return true;
 }
 
@@ -225,4 +234,5 @@ void ControllerSessionManager::terminateSlot(uint8_t slot_index, uint32_t now_ms
   slot.last_packet_ms = 0;
   slot.grace_deadline_ms = now_ms + config::kControllerReconnectGraceMs;
   slot.state = ControllerState{};
+  debug_log::printf("[session] disconnected slot=%u\n", static_cast<unsigned>(slot_index + 1));
 }

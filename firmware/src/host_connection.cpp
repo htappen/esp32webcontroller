@@ -1,6 +1,9 @@
 #include "host_connection.h"
 
+#include <Arduino.h>
+
 #include "ble_gamepad.h"
+#include "debug_log.h"
 #if defined(CONTROLLER_HOST_TRANSPORT_USB_XINPUT)
 #include "usb_xinput_gamepad.h"
 #endif
@@ -90,7 +93,11 @@ bool HostConnectionManager::sendReport(const HostInputReport& report) {
   if (transport_ == nullptr) {
     return false;
   }
-  return transport_->send(report);
+  const bool ok = transport_->send(report);
+  if (!ok) {
+    debug_log::printf("[host] sendReport failed transport=%s variant=%s\n", status_.transport, status_.variant);
+  }
+  return ok;
 }
 
 bool HostConnectionManager::sendSlotReports(const HostInputReport* reports, uint8_t report_count,
@@ -98,7 +105,13 @@ bool HostConnectionManager::sendSlotReports(const HostInputReport* reports, uint
   if (transport_ == nullptr) {
     return false;
   }
-  return transport_->sendSlots(reports, report_count, active_slot_mask);
+  const bool ok = transport_->sendSlots(reports, report_count, active_slot_mask);
+  if (!ok) {
+    debug_log::printf("[host] sendSlotReports failed transport=%s variant=%s count=%u mask=0x%08lx\n",
+                      status_.transport, status_.variant, report_count,
+                      static_cast<unsigned long>(active_slot_mask));
+  }
+  return ok;
 }
 
 HostStatus HostConnectionManager::status() const {

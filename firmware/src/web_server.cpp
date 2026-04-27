@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
+#include "debug_log.h"
 #include "config.h"
 
 namespace {
@@ -36,6 +37,48 @@ const char* connection_state_to_string(NetworkConnectionState state) {
       return "sta_connected";
     case NetworkConnectionState::kStaCandidateFailed:
       return "sta_candidate_failed";
+  }
+  return "unknown";
+}
+
+const char* bind_result_to_string(ControllerBindResult result) {
+  switch (result) {
+    case ControllerBindResult::kAssigned:
+      return "assigned";
+    case ControllerBindResult::kReassigned:
+      return "reassigned";
+    case ControllerBindResult::kFull:
+      return "full";
+    case ControllerBindResult::kInvalidClientId:
+      return "invalid_client_id";
+  }
+  return "unknown";
+}
+
+const char* ws_type_to_string(WStype_t type) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      return "disconnected";
+    case WStype_CONNECTED:
+      return "connected";
+    case WStype_TEXT:
+      return "text";
+    case WStype_BIN:
+      return "bin";
+    case WStype_ERROR:
+      return "error";
+    case WStype_FRAGMENT_TEXT_START:
+      return "fragment_text_start";
+    case WStype_FRAGMENT_BIN_START:
+      return "fragment_bin_start";
+    case WStype_FRAGMENT:
+      return "fragment";
+    case WStype_FRAGMENT_FIN:
+      return "fragment_fin";
+    case WStype_PING:
+      return "ping";
+    case WStype_PONG:
+      return "pong";
   }
   return "unknown";
 }
@@ -124,6 +167,13 @@ bool WebServerBridge::begin() {
     doc["controller"]["debug"]["wsPacketsReceived"] = ws_packets_received_;
     doc["controller"]["debug"]["wsPacketsApplied"] = ws_packets_applied_;
     doc["controller"]["debug"]["wsPacketsRejected"] = ws_packets_rejected_;
+    doc["controller"]["debug"]["wsLastEvent"] = ws_last_event_;
+    doc["controller"]["debug"]["wsLastReason"] = ws_last_reason_;
+    doc["controller"]["debug"]["wsLastClientNum"] = ws_last_client_num_;
+    doc["controller"]["debug"]["wsLastBindSlot"] = ws_last_bind_slot_;
+    doc["controller"]["debug"]["wsLastBindResult"] = ws_last_bind_result_;
+    doc["controller"]["debug"]["wsLastMessageLen"] = ws_last_message_len_;
+    doc["controller"]["debug"]["wsLastClientId"] = ws_last_client_id_;
 
     String payload;
     serializeJson(doc, payload);
@@ -241,17 +291,40 @@ void WebServerBridge::loop() {
 }
 
 void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+  ws_last_client_num_ = num;
+  strlcpy(ws_last_event_, ws_type_to_string(type), sizeof(ws_last_event_));
+  ws_last_message_len_ = length;
+  if (type == WStype_ERROR) {
+    strlcpy(ws_last_reason_, "ws_error", sizeof(ws_last_reason_));
+    debug_log::printf("[ws] client %u event=error len=%u\n", num, static_cast<unsigned>(length));
+    if (payload != nullptr && length > 0) {
+      debug_log::printf("[ws] error payload=");
+      for (size_t i = 0; i < length && i < 32; ++i) {
+        debug_log::printf("%02x", payload[i]);
+      }
+      debug_log::println("");
+    }
+  } else {
+    debug_log::printf("[ws] client %u event=%s len=%u\n", num, ws_last_event_, static_cast<unsigned>(length));
+  }
+
   switch (type) {
     case WStype_CONNECTED:
+      debug_log::printf("[ws] client %u connected\n", num);
       break;
     case WStype_DISCONNECTED:
+      debug_log::printf("[ws] client %u disconnected\n", num);
       sessions_->disconnectClient(num, millis());
       break;
     case WStype_TEXT: {
       if (payload == nullptr || length == 0) {
+        strlcpy(ws_last_reason_, "empty_text", sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u empty text frame\n", num);
         return;
       }
       ++ws_packets_received_;
+      debug_log::printf("[ws] client %u text frame len=%u received=%lu\n", num, static_cast<unsigned>(length),
+                        static_cast<unsigned long>(ws_packets_received_));
       String message;
       message.reserve(length + 1);
       for (size_t i = 0; i < length; ++i) {
@@ -261,7 +334,15 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
       const uint32_t now = millis();
       WsHelloPacket hello;
       if (ws_parser_.parseHello(message.c_str(), &hello)) {
+        strlcpy(ws_last_event_, "hello", sizeof(ws_last_event_));
+        strlcpy(ws_last_client_id_, hello.client_id, sizeof(ws_last_client_id_));
+        debug_log::printf("[ws] client %u hello client_id=%s\n", num, hello.client_id);
         const ControllerBindOutcome outcome = sessions_->bindClient(num, hello.client_id, now);
+        ws_last_bind_slot_ = outcome.slot_number;
+        ws_last_bind_result_ = static_cast<uint8_t>(outcome.result);
+        strlcpy(ws_last_reason_, bind_result_to_string(outcome.result), sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u bind result=%u slot=%u prev=%u\n", num,
+                          static_cast<unsigned>(outcome.result), outcome.slot_number, outcome.previous_ws_client_num);
         switch (outcome.result) {
           case ControllerBindResult::kAssigned:
             sendSessionMessage(num, true, outcome.slot_number, "assigned");
@@ -289,19 +370,32 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
 
       ControllerState base;
       if (!sessions_->getStateForClient(num, &base)) {
+        strlcpy(ws_last_event_, "no_session", sizeof(ws_last_event_));
+        strlcpy(ws_last_reason_, "no_bound_session", sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u no bound session for payload\n", num);
         ++ws_packets_rejected_;
         return;
       }
 
       ControllerState next;
       if (!ws_parser_.parseJson(message.c_str(), base, &next)) {
+        strlcpy(ws_last_event_, "bad_json", sizeof(ws_last_event_));
+        strlcpy(ws_last_reason_, "invalid_controller_json", sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u invalid controller json\n", num);
         ++ws_packets_rejected_;
         return;
       }
       next.last_update_ms = now;
       if (sessions_->applyStateForClient(num, next, now)) {
+        strlcpy(ws_last_event_, "applied", sizeof(ws_last_event_));
+        strlcpy(ws_last_reason_, "ok", sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u applied seq=%lu active=%u\n", num, static_cast<unsigned long>(next.seq),
+                          static_cast<unsigned>(sessions_->snapshot(now).active_slots));
         ++ws_packets_applied_;
       } else {
+        strlcpy(ws_last_event_, "rejected", sizeof(ws_last_event_));
+        strlcpy(ws_last_reason_, "state_rejected", sizeof(ws_last_reason_));
+        debug_log::printf("[ws] client %u rejected seq=%lu\n", num, static_cast<unsigned long>(next.seq));
         ++ws_packets_rejected_;
       }
       break;
@@ -309,7 +403,6 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
     case WStype_BIN:
     case WStype_PING:
     case WStype_PONG:
-    case WStype_ERROR:
     case WStype_FRAGMENT_TEXT_START:
     case WStype_FRAGMENT_BIN_START:
     case WStype_FRAGMENT:
@@ -320,6 +413,12 @@ void WebServerBridge::handleWsEvent(uint8_t num, WStype_t type, uint8_t* payload
 }
 
 void WebServerBridge::sendSessionMessage(uint8_t num, bool connected, uint8_t slot_number, const char* reason) {
+  ws_last_client_num_ = num;
+  ws_last_bind_slot_ = slot_number;
+  ws_last_bind_result_ = connected ? static_cast<uint8_t>(ControllerBindResult::kAssigned)
+                                   : static_cast<uint8_t>(ControllerBindResult::kFull);
+  strlcpy(ws_last_event_, "session", sizeof(ws_last_event_));
+  strlcpy(ws_last_reason_, reason != nullptr ? reason : "none", sizeof(ws_last_reason_));
   JsonDocument doc;
   doc["type"] = "session";
   doc["connected"] = connected;
@@ -330,7 +429,9 @@ void WebServerBridge::sendSessionMessage(uint8_t num, bool connected, uint8_t sl
   doc["reason"] = reason;
   String payload;
   serializeJson(doc, payload);
-  g_ws.sendTXT(num, payload);
+  const bool ok = g_ws.sendTXT(num, payload);
+  debug_log::printf("[ws] session message client=%u connected=%u slot=%u reason=%s send=%u\n", num,
+                    connected ? 1 : 0, slot_number, reason != nullptr ? reason : "none", ok ? 1 : 0);
 }
 
 void WebServerBridge::syncMdns(const NetworkStatus& status) {
@@ -363,6 +464,6 @@ void WebServerBridge::syncMdns(const NetworkStatus& status) {
     mdns_mode_ = status.mode;
     mdns_ip_ = current_ip;
   } else {
-    Serial.println("mDNS start failed");
+    debug_log::println("mDNS start failed");
   }
 }
