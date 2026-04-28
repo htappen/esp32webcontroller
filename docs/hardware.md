@@ -30,7 +30,9 @@ Use a stable USB power source during BLE + Wi-Fi testing.
 - Use the Pi UART pins, typically `GPIO14`/`GPIO15`, and capture logs from the Pi UART device such as `/dev/serial0`.
 - This UART log path is for USB-mode runtime debugging only. BLE validation does not need it.
 - Enable the logging code with `CONTROLLER_DEBUG_LOGS=1`; in that build mode the Pi USB tests should fail if no UART output is captured.
+- The Pi E2E tests now expect runtime UART lines for websocket connect, session assignment, packet apply, and disconnect. If the log is blank, treat it as a logging problem first.
 - When capturing those S3 UART logs, skip the extra post-upload watchdog reboot so the board boots the app after flashing instead of staying in ROM download mode.
+- If the UART shows repeated reset banners, brownouts, or panic output, inspect [`firmware/platformio.ini`](/home/htappen/controller/firmware/platformio.ini) first. The S3 USB-mode envs should keep the `esp32s3` MCU setting, 4 MB flash sizing, `BOARD_HAS_PSRAM`, and the USB startup flags aligned with the selected host mode before you chase app code.
 
 ## WROOM Serial Logs
 

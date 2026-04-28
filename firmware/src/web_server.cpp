@@ -92,6 +92,22 @@ const char* mime_type_for_path(const String& path) {
   return "application/octet-stream";
 }
 
+bool serve_static_file(const char* request_path, const char* file_path, bool log_request) {
+  if (log_request) {
+    debug_log::printf("[http] GET %s\n", request_path);
+  }
+
+  File f = LittleFS.open(file_path, "r");
+  if (!f) {
+    g_http.send(404, "text/plain", "not found");
+    return false;
+  }
+
+  g_http.streamFile(f, mime_type_for_path(file_path));
+  f.close();
+  return true;
+}
+
 }  // namespace
 
 WebServerBridge::WebServerBridge(NetworkManager* network, HostConnectionManager* host,
@@ -106,6 +122,7 @@ bool WebServerBridge::begin() {
   syncMdns(network_->status());
 
   g_http.on("/api/status", HTTP_GET, [this]() {
+    debug_log::printf("[http] GET /api/status\n");
     JsonDocument doc;
     const NetworkStatus ns = network_->status();
     const HostStatus hs = host_->status();
@@ -227,43 +244,20 @@ bool WebServerBridge::begin() {
   });
 
   g_http.on("/", HTTP_GET, []() {
-    File f = LittleFS.open("/index.html", "r");
-    if (!f) {
-      g_http.send(404, "text/plain", "index.html not found");
-      return;
-    }
-    g_http.streamFile(f, "text/html");
-    f.close();
+    serve_static_file("/", "/index.html", true);
   });
 
   g_http.on("/app.js", HTTP_GET, []() {
-    File f = LittleFS.open("/app.js", "r");
-    if (!f) {
-      g_http.send(404, "text/plain", "app.js not found");
-      return;
-    }
-    g_http.streamFile(f, "application/javascript");
-    f.close();
+    serve_static_file("/app.js", "/app.js", true);
   });
 
   g_http.on("/app.css", HTTP_GET, []() {
-    File f = LittleFS.open("/app.css", "r");
-    if (!f) {
-      g_http.send(404, "text/plain", "app.css not found");
-      return;
-    }
-    g_http.streamFile(f, "text/css");
-    f.close();
+    serve_static_file("/app.css", "/app.css", true);
   });
 
   g_http.onNotFound([]() {
-    File f = LittleFS.open(g_http.uri(), "r");
-    if (!f) {
-      g_http.send(404, "text/plain", "not found");
-      return;
-    }
-    g_http.streamFile(f, mime_type_for_path(g_http.uri()));
-    f.close();
+    const String uri = g_http.uri();
+    serve_static_file(uri.c_str(), uri.c_str(), false);
   });
 
   g_http.begin();

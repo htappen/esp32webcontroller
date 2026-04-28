@@ -22,6 +22,9 @@ firmware/.pio/
 firmware/data/
 firmware/src/generated/
 
+# Local testing stuff
+firmware_minimal/
+
 # Test artifacts
 coverage/
 
