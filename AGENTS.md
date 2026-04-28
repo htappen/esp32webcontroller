@@ -146,6 +146,7 @@ Serial-log guidance:
 - For S3 USB-mode runtime logs, use the Pi UART path and `PI_UART_PORT` if you need to override the default `/dev/serial0`.
 - For WROOM debug logs, use the board's USB-UART port and `PI_SERIAL_PORT` if you need to override auto-detection.
 - In debug mode, Pi tests should fail if the expected serial log path is missing or produces no output.
+- For S3 UART debug captures, skip the extra post-upload watchdog reboot so the app boots after flashing instead of staying in ROM download mode.
 
 Important Pi-side helpers include:
 

@@ -275,6 +275,7 @@ Use `./tools/pi/wait_for_acm_then_upload.sh --with-uploadfs` as the default S3 f
 For USB-mode runtime logs, wire the ESP32-S3 UART to the Pi UART pins and capture from the Pi UART device such as `/dev/serial0`. That log path is for `usb_switch` and `usb_xinput` only.
 For WROOM BLE debugging, use the board's USB-UART bridge and capture from the board serial device such as `/dev/ttyUSB0` or the path in `PI_SERIAL_PORT`.
 Set `CONTROLLER_DEBUG_LOGS=1` when you want the firmware to compile in UART logging and have the Pi-side tests assert that the appropriate serial path is live.
+When collecting S3 UART debug logs, skip the extra post-upload watchdog reboot so the firmware can boot into the app instead of remaining in ROM download mode.
 
 The proved working USB-debug attach path uses:
 

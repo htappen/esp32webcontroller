@@ -12,6 +12,7 @@ RUN_STA_TESTS="${RUN_STA_TESTS:-auto}"
 BOARD_NAME="${CONTROLLER_BOARD:-s3}"
 HOST_MODE="${CONTROLLER_HOST_MODE:-ble}"
 DEVICE_UUID="${CONTROLLER_DEVICE_UUID:-${DEFAULT_TEST_DEVICE_UUID}}"
+UART_PORT="${PI_UART_PORT:-}"
 SERIAL_PORT="${PI_SERIAL_PORT:-}"
 if [[ "${BOARD_NAME}" == "wroom" && -z "${SERIAL_PORT}" ]]; then
   SERIAL_PORT="${PORT}"
@@ -40,7 +41,7 @@ resolve_test_identity() {
 }
 
 remote_env_prefix() {
-  printf "AP_SSID='%s' BLE_NAME='%s' PAGE_URL='%s' MDNS_HTTP_BASE_URL='%s' HTTP_BASE_URL='%s' WS_URL='ws://%s.local:81' CONTROLLER_HOSTNAME='%s' CONTROLLER_LOCAL_URL='%s' EXPECTED_TRANSPORT='%s' EXPECTED_VARIANT='%s' CONTROLLER_DEVICE_UUID='%s' CONTROLLER_DEBUG_LOGS='%s' PI_SERIAL_PORT='%s'" \
+  printf "AP_SSID='%s' BLE_NAME='%s' PAGE_URL='%s' MDNS_HTTP_BASE_URL='%s' HTTP_BASE_URL='%s' WS_URL='ws://%s.local:81' CONTROLLER_HOSTNAME='%s' CONTROLLER_LOCAL_URL='%s' EXPECTED_TRANSPORT='%s' EXPECTED_VARIANT='%s' CONTROLLER_DEVICE_UUID='%s' CONTROLLER_DEBUG_LOGS='%s' PI_UART_PORT='%s' PI_SERIAL_PORT='%s'" \
     "${CONTROLLER_DEVICE_AP_SSID}" \
     "${CONTROLLER_DEVICE_BLE_NAME}" \
     "${CONTROLLER_DEVICE_LOCAL_URL}" \
@@ -53,6 +54,7 @@ remote_env_prefix() {
     "$([[ "${HOST_MODE}" == "usb_xinput" ]] && printf 'pc' || ([[ "${HOST_MODE}" == "usb_switch" ]] && printf 'switch' || printf 'default'))" \
     "${CONTROLLER_DEVICE_UUID}" \
     "${CONTROLLER_DEBUG_LOGS:-0}" \
+    "${UART_PORT}" \
     "${SERIAL_PORT}"
 }
 

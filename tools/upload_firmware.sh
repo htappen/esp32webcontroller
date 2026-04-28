@@ -130,9 +130,13 @@ if [[ "${upload_status}" -ne 0 ]]; then
 fi
 
 if [[ "${BOARD_NAME}" == "s3" ]]; then
-  log "requesting post-upload watchdog reset"
-  if ! CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/reboot_board.sh" "${UPLOAD_PORT}"; then
-    log "post-upload watchdog reset failed; manual EN/RESET may still be required"
+  if [[ "${SKIP_POST_UPLOAD_REBOOT:-0}" == "1" ]]; then
+    log "skipping post-upload watchdog reset"
+  else
+    log "requesting post-upload watchdog reset"
+    if ! CONTROLLER_BOARD="${BOARD_NAME}" "${ROOT_DIR}/tools/reboot_board.sh" "${UPLOAD_PORT}"; then
+      log "post-upload watchdog reset failed; manual EN/RESET may still be required"
+    fi
   fi
 fi
 
