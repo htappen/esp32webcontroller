@@ -69,6 +69,7 @@ static constexpr uint8_t kStaConnectMaxAttempts = 3;
 static constexpr uint32_t kStaReconnectBackoffMs = 3000;
 static constexpr uint32_t kStaCandidateStartDelayMs = 750;
 static constexpr uint32_t kReportIntervalMs = 16;
+static constexpr uint32_t kUsbSwitchTraceLogIntervalMs = 5000;
 static constexpr uint32_t kUsbXInputBootLogDelayMs = CONTROLLER_USB_XINPUT_ATTACH_DELAY_MS;
 static constexpr uint32_t kUsbXInputBootLogStepMs = CONTROLLER_USB_XINPUT_ATTACH_DELAY_STEP_MS;
 static constexpr bool kUsbXInputDeferBegin = CONTROLLER_USB_XINPUT_DEFER_BEGIN != 0;

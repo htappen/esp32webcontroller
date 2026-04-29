@@ -17,6 +17,8 @@ class UsbSwitchGamepadBridge : public HostTransport {
  private:
   bool started_ = false;
   uint8_t active_slots_ = 0;
+  uint32_t send_attempts_ = 0;
+  uint32_t send_successes_ = 0;
 };
 
 #endif

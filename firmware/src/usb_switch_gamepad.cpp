@@ -4,9 +4,18 @@
 
 #include <Arduino.h>
 #include <USB.h>
-#include <USBHID.h>
 
+#include <array>
+#include <cstring>
+
+#include "debug_log.h"
 #include "config.h"
+#include "esp32-hal-tinyusb.h"
+#include "common/tusb_common.h"
+#include "class/hid/hid.h"
+#include "device/usbd.h"
+#include "device/usbd_pvt.h"
+#include "multi_controller_util.h"
 
 namespace {
 constexpr uint16_t kNintendoSwitchVid = 0x0f0d;
@@ -19,8 +28,12 @@ constexpr uint8_t kHatDown = 4;
 constexpr uint8_t kHatDownLeft = 5;
 constexpr uint8_t kHatLeft = 6;
 constexpr uint8_t kHatUpLeft = 7;
-constexpr uint8_t kHatCentered = 8;
+constexpr uint8_t kHatCentered = 0x0f;
 constexpr uint8_t kTriggerButtonThreshold = 32;
+constexpr uint8_t kEndpointPacketSize = 8;
+constexpr uint8_t kEndpointIntervalMs = 4;
+constexpr uint16_t kReportDescriptorLength = 80;
+constexpr uint16_t kInterfaceDescriptorLength = TUD_HID_DESC_LEN;
 
 constexpr uint8_t kButtonY = 0;
 constexpr uint8_t kButtonB = 1;
@@ -34,7 +47,8 @@ constexpr uint8_t kButtonMinus = 8;
 constexpr uint8_t kButtonPlus = 9;
 constexpr uint8_t kButtonLStick = 10;
 constexpr uint8_t kButtonRStick = 11;
-constexpr uint8_t kReportDescriptor[] = {
+
+constexpr std::array<uint8_t, kReportDescriptorLength> kReportDescriptor = {
     0x05, 0x01, 0x09, 0x05, 0xA1, 0x01, 0x15, 0x00, 0x25, 0x01, 0x35, 0x00, 0x45, 0x01, 0x75,
     0x01, 0x95, 0x0E, 0x05, 0x09, 0x19, 0x01, 0x29, 0x0E, 0x81, 0x02, 0x95, 0x02, 0x81, 0x01,
     0x05, 0x01, 0x25, 0x07, 0x46, 0x3B, 0x01, 0x75, 0x04, 0x95, 0x01, 0x65, 0x14, 0x09, 0x39,
@@ -53,113 +67,418 @@ struct __attribute__((packed)) NintendoSwitchReport {
   uint8_t reserved = 0;
 };
 
-class NintendoSwitchUsbDevice : public USBHIDDevice {
- public:
-  NintendoSwitchUsbDevice() {
-    USB.VID(kNintendoSwitchVid);
-    USB.PID(kNintendoSwitchPid);
-    USB.usbClass(0);
-    USB.usbSubClass(0);
-    USB.usbProtocol(0);
-    USB.productName(config::kUsbSwitchProductName);
-    USB.manufacturerName("ESP32 Controller");
-    USB.serialNumber(config::kDeviceUuid);
-    hid_.addDevice(this, sizeof(kReportDescriptor));
-  }
-
-  void begin() {
-    hid_.begin();
-    reset();
-  }
-
-  bool ready() const {
-    return const_cast<USBHID&>(hid_).ready();
-  }
-
-  bool mounted() const {
-    return static_cast<bool>(USB);
-  }
-
-  void reset() {
-    report_ = NintendoSwitchReport{};
-  }
-
-  bool send(const HostInputReport& report) {
-    report_.buttons = 0;
-    if (report.btn.y) report_.buttons |= (1u << kButtonY);
-    if (report.btn.b) report_.buttons |= (1u << kButtonB);
-    if (report.btn.a) report_.buttons |= (1u << kButtonA);
-    if (report.btn.x) report_.buttons |= (1u << kButtonX);
-    if (report.btn.lb) report_.buttons |= (1u << kButtonL);
-    if (report.btn.rb) report_.buttons |= (1u << kButtonR);
-    if (report.lt >= kTriggerButtonThreshold) report_.buttons |= (1u << kButtonZl);
-    if (report.rt >= kTriggerButtonThreshold) report_.buttons |= (1u << kButtonZr);
-    if (report.btn.back) report_.buttons |= (1u << kButtonMinus);
-    if (report.btn.start) report_.buttons |= (1u << kButtonPlus);
-    if (report.btn.ls) report_.buttons |= (1u << kButtonLStick);
-    if (report.btn.rs) report_.buttons |= (1u << kButtonRStick);
-
-    report_.hat = hatFromButtons(report.btn);
-    report_.left_x = axisToUint8(report.lx);
-    report_.left_y = axisToUint8(report.ly);
-    report_.right_x = axisToUint8(report.rx);
-    report_.right_y = axisToUint8(report.ry);
-    report_.reserved = 0;
-
-    if (!ready()) {
-      return false;
-    }
-    return hid_.SendReport(0, &report_, sizeof(report_));
-  }
-
-  uint16_t _onGetDescriptor(uint8_t* dst) override {
-    memcpy(dst, kReportDescriptor, sizeof(kReportDescriptor));
-    return sizeof(kReportDescriptor);
-  }
-
- private:
-  static uint8_t axisToUint8(int16_t axis) {
-    const int32_t shifted = static_cast<int32_t>(axis) + 32767;
-    return static_cast<uint8_t>((shifted * 255) / 65534);
-  }
-
-  static uint8_t hatFromButtons(const Buttons& btn) {
-    const bool up = btn.du;
-    const bool down = btn.dd;
-    const bool left = btn.dl;
-    const bool right = btn.dr;
-
-    if (up && right) return kHatUpRight;
-    if (up && left) return kHatUpLeft;
-    if (down && right) return kHatDownRight;
-    if (down && left) return kHatDownLeft;
-    if (up) return kHatUp;
-    if (down) return kHatDown;
-    if (right) return kHatRight;
-    if (left) return kHatLeft;
-    return kHatCentered;
-  }
-
-  USBHID hid_;
-  NintendoSwitchReport report_;
+struct SwitchSlotState {
+  bool interfaces_opened = false;
+  bool report_in_flight = false;
+  bool report_dirty = false;
+  bool has_queued_report = false;
+  bool has_sent_non_neutral_report = false;
+  uint8_t rhport = 0;
+  uint8_t interface_number = 0;
+  uint8_t control_in_ep = 0;
+  uint8_t hid_instance = 0xff;
+  NintendoSwitchReport pending_report{};
+  NintendoSwitchReport transfer_report{};
+  NintendoSwitchReport last_queued_report{};
 };
 
-NintendoSwitchUsbDevice g_usb_gamepads[config::kMaxControllerSlots];
-}  // namespace
+std::array<uint8_t, config::kMaxControllerSlots * kInterfaceDescriptorLength> g_interface_descriptors = {};
+SwitchSlotState g_slot_states[config::kMaxControllerSlots] = {};
+bool g_descriptors_built = false;
+uint8_t g_base_interface = 0;
+bool g_started = false;
+uint8_t g_active_slots = 0;
+uint32_t g_send_attempt_count = 0;
+uint32_t g_send_success_count = 0;
+uint32_t g_last_trace_log_ms = 0;
 
-bool UsbSwitchGamepadBridge::begin() {
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    g_usb_gamepads[i].begin();
+uint8_t axisToUint8(int16_t axis) {
+  const int32_t shifted = static_cast<int32_t>(axis) + 32768;
+  return static_cast<uint8_t>((shifted * 255) / 65535);
+}
+
+uint16_t buttonsFromReport(const HostInputReport& report) {
+  uint16_t buttons = 0;
+  if (report.btn.y) buttons |= (1u << kButtonY);
+  if (report.btn.b) buttons |= (1u << kButtonB);
+  if (report.btn.a) buttons |= (1u << kButtonA);
+  if (report.btn.x) buttons |= (1u << kButtonX);
+  if (report.btn.lb) buttons |= (1u << kButtonL);
+  if (report.btn.rb) buttons |= (1u << kButtonR);
+  if (report.lt >= kTriggerButtonThreshold) buttons |= (1u << kButtonZl);
+  if (report.rt >= kTriggerButtonThreshold) buttons |= (1u << kButtonZr);
+  if (report.btn.back) buttons |= (1u << kButtonMinus);
+  if (report.btn.start) buttons |= (1u << kButtonPlus);
+  if (report.btn.ls) buttons |= (1u << kButtonLStick);
+  if (report.btn.rs) buttons |= (1u << kButtonRStick);
+  return buttons;
+}
+
+uint8_t hatFromButtons(const Buttons& btn) {
+  const bool up = btn.du;
+  const bool down = btn.dd;
+  const bool left = btn.dl;
+  const bool right = btn.dr;
+
+  if (up && right) return kHatUpRight;
+  if (up && left) return kHatUpLeft;
+  if (down && right) return kHatDownRight;
+  if (down && left) return kHatDownLeft;
+  if (up) return kHatUp;
+  if (down) return kHatDown;
+  if (right) return kHatRight;
+  if (left) return kHatLeft;
+  return kHatCentered;
+}
+
+NintendoSwitchReport reportFromHostInput(const HostInputReport& report) {
+  NintendoSwitchReport switch_report;
+  switch_report.buttons = buttonsFromReport(report);
+  switch_report.hat = hatFromButtons(report.btn);
+  switch_report.left_x = axisToUint8(report.lx);
+  switch_report.left_y = axisToUint8(report.ly);
+  switch_report.right_x = axisToUint8(report.rx);
+  switch_report.right_y = axisToUint8(report.ry);
+  switch_report.reserved = 0;
+  return switch_report;
+}
+
+bool reportsEqual(const NintendoSwitchReport& lhs, const NintendoSwitchReport& rhs) {
+  return memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
+}
+
+bool reportIsNeutral(const NintendoSwitchReport& report) {
+  return report.buttons == 0 && report.hat == kHatCentered && report.left_x == 0x80 && report.left_y == 0x80 &&
+         report.right_x == 0x80 && report.right_y == 0x80;
+}
+
+bool slotCanTransfer(const SwitchSlotState& slot) {
+  return slot.hid_instance != 0xff && tud_hid_n_ready(slot.hid_instance);
+}
+
+bool shouldLogTrace(uint32_t now_ms) {
+  if (g_last_trace_log_ms == 0 || now_ms - g_last_trace_log_ms >= config::kUsbSwitchTraceLogIntervalMs) {
+    g_last_trace_log_ms = now_ms;
+    return true;
   }
-  USB.begin();
-  started_ = true;
-  active_slots_ = 0;
-  Serial.printf("USB host ready: transport=usb variant=switch board=%s vid=%04x pid=%04x\n", config::kBoardName,
-                kNintendoSwitchVid, kNintendoSwitchPid);
+  return false;
+}
+
+void buildDescriptors(uint8_t base_interface) {
+  if (g_descriptors_built) {
+    return;
+  }
+
+  uint8_t* dst = g_interface_descriptors.data();
+  for (uint8_t slot = 0; slot < config::kMaxControllerSlots; ++slot) {
+    const uint8_t in_ep = static_cast<uint8_t>(0x81 + slot);
+    const uint8_t interface_number = static_cast<uint8_t>(base_interface + slot);
+    const std::array<uint8_t, kInterfaceDescriptorLength> block = {
+        TUD_HID_DESCRIPTOR(interface_number, 0, 0, kReportDescriptorLength, in_ep, kEndpointPacketSize,
+                           kEndpointIntervalMs)};
+    memcpy(dst, block.data(), block.size());
+    dst += block.size();
+  }
+  g_descriptors_built = true;
+}
+
+void resetState() {
+  memset(g_slot_states, 0, sizeof(g_slot_states));
+  g_base_interface = 0;
+  g_active_slots = 0;
+  g_send_attempt_count = 0;
+  g_send_success_count = 0;
+  g_last_trace_log_ms = 0;
+}
+
+bool startTransfer(uint8_t slot_index) {
+  SwitchSlotState& slot = g_slot_states[slot_index];
+  if (slot.report_in_flight || !tud_ready()) {
+    return false;
+  }
+
+  if (slot.hid_instance == 0xff || !tud_hid_n_ready(slot.hid_instance)) {
+    return false;
+  }
+
+  slot.transfer_report = slot.pending_report;
+  const uint32_t now_ms = millis();
+  const bool log_trace = shouldLogTrace(now_ms);
+  if (log_trace) {
+    debug_log::printf("[host] usb_switch startTransfer slot=%u hid=%u dirty=%u in_flight=%u\n",
+                      static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.hid_instance),
+                      slot.report_dirty ? 1u : 0u, slot.report_in_flight ? 1u : 0u);
+  }
+  const uint8_t instance = slot.hid_instance;
+  if (log_trace) {
+    debug_log::printf("[host] usb_switch try report slot=%u instance=%u size=%u\n",
+                      static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
+                      static_cast<unsigned>(sizeof(slot.transfer_report)));
+  }
+  slot.report_in_flight = tud_hid_n_report(instance, 0, &slot.transfer_report, sizeof(slot.transfer_report));
+  if (log_trace) {
+    debug_log::printf("[host] usb_switch report result slot=%u instance=%u in_flight=%u\n",
+                      static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
+                      slot.report_in_flight ? 1u : 0u);
+  }
+  if (slot.report_in_flight) {
+    slot.report_dirty = false;
+    slot.last_queued_report = slot.transfer_report;
+    slot.has_queued_report = true;
+    ++g_send_success_count;
+    if (!reportIsNeutral(slot.transfer_report)) {
+      slot.has_sent_non_neutral_report = true;
+    }
+  }
+  return slot.report_in_flight;
+}
+
+int8_t slotIndexFromInterface(uint8_t interface_number) {
+  if (interface_number < g_base_interface) {
+    return -1;
+  }
+  const uint8_t slot_index = static_cast<uint8_t>(interface_number - g_base_interface);
+  return slot_index < config::kMaxControllerSlots ? static_cast<int8_t>(slot_index) : -1;
+}
+
+int8_t slotIndexFromEndpoint(uint8_t ep_addr) {
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    if (!g_slot_states[i].interfaces_opened) {
+      continue;
+    }
+    if (g_slot_states[i].control_in_ep == ep_addr) {
+      return static_cast<int8_t>(i);
+    }
+  }
+  return -1;
+}
+
+void switchDriverInit(void) {
+  resetState();
+}
+
+void switchDriverReset(uint8_t rhport) {
+  (void)rhport;
+  resetState();
+}
+
+uint16_t switchDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf, uint16_t max_len) {
+  if (desc_intf->bInterfaceClass != TUSB_CLASS_HID) {
+    return 0;
+  }
+
+  const int8_t slot_index = slotIndexFromInterface(desc_intf->bInterfaceNumber);
+  if (slot_index < 0) {
+    return 0;
+  }
+
+  SwitchSlotState& slot = g_slot_states[slot_index];
+  slot = {};
+  slot.interfaces_opened = true;
+  slot.rhport = rhport;
+  slot.interface_number = desc_intf->bInterfaceNumber;
+  slot.hid_instance = static_cast<uint8_t>(slot_index);
+
+  auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
+  uint16_t consumed = 0;
+  while (consumed < max_len) {
+    const uint8_t len = tu_desc_len(desc);
+    if (len == 0 || consumed + len > max_len) {
+      return 0;
+    }
+    if (consumed != 0 && tu_desc_type(desc) == TUSB_DESC_INTERFACE) {
+      break;
+    }
+    if (tu_desc_type(desc) == TUSB_DESC_ENDPOINT) {
+      auto const* ep_desc = reinterpret_cast<tusb_desc_endpoint_t const*>(desc);
+      if (!usbd_edpt_open(rhport, ep_desc)) {
+        slot.interfaces_opened = false;
+        return 0;
+      }
+      if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
+        slot.control_in_ep = ep_desc->bEndpointAddress;
+      }
+    }
+    consumed = static_cast<uint16_t>(consumed + len);
+    desc = tu_desc_next(desc);
+  }
+
+  return consumed;
+}
+
+bool switchDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request) {
+  if (stage != CONTROL_STAGE_SETUP) {
+    return true;
+  }
+
+  if (request->bmRequestType_bit.type == TUSB_REQ_TYPE_STANDARD && request->bRequest == TUSB_REQ_GET_DESCRIPTOR) {
+    if (tu_u16_high(request->wValue) != HID_DESC_TYPE_REPORT) {
+      return false;
+    }
+    const uint8_t interface_number = static_cast<uint8_t>(request->wIndex & 0xff);
+    const int8_t slot_index = slotIndexFromInterface(interface_number);
+    if (slot_index < 0) {
+      return false;
+    }
+    return tud_control_xfer(rhport, request, const_cast<uint8_t*>(kReportDescriptor.data()),
+                            kReportDescriptor.size());
+  }
+
+  if (request->bmRequestType_bit.type != TUSB_REQ_TYPE_CLASS) {
+    return false;
+  }
+
+  const uint8_t interface_number = static_cast<uint8_t>(request->wIndex & 0xff);
+  const int8_t slot_index = slotIndexFromInterface(interface_number);
+  if (slot_index < 0) {
+    return false;
+  }
+
+  switch (request->bRequest) {
+    case HID_REQ_CONTROL_GET_REPORT:
+      return false;
+    case HID_REQ_CONTROL_SET_REPORT:
+    case HID_REQ_CONTROL_SET_IDLE:
+    case HID_REQ_CONTROL_SET_PROTOCOL:
+      return tud_control_status(rhport, request);
+    default:
+      return false;
+  }
+}
+
+bool switchDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
+  (void)rhport;
+  (void)xferred_bytes;
+  const int8_t slot_index = slotIndexFromEndpoint(ep_addr);
+  if (slot_index < 0) {
+    return false;
+  }
+
+  SwitchSlotState& slot = g_slot_states[slot_index];
+  if (result != XFER_RESULT_SUCCESS) {
+    slot.report_in_flight = false;
+    return true;
+  }
+
+  slot.report_in_flight = false;
+  if (slot.report_dirty) {
+    (void)startTransfer(static_cast<uint8_t>(slot_index));
+  }
   return true;
 }
 
-void UsbSwitchGamepadBridge::loop() {}
+void switchDriverSof(uint8_t rhport, uint32_t frame_count) {
+  (void)rhport;
+  (void)frame_count;
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    SwitchSlotState& slot = g_slot_states[i];
+    if (slot.interfaces_opened && slot.report_dirty && !slot.report_in_flight) {
+      (void)startTransfer(i);
+    }
+  }
+}
+
+extern "C" usbd_class_driver_t const* usbd_app_driver_get_cb(uint8_t* driver_count) {
+  static usbd_class_driver_t const kSwitchDriver = {
+#if CFG_TUSB_DEBUG >= CFG_TUD_LOG_LEVEL
+      "switch",
+#endif
+      switchDriverInit,
+      switchDriverReset,
+      switchDriverOpen,
+      switchDriverControlXfer,
+      switchDriverXfer,
+      switchDriverSof,
+  };
+
+  *driver_count = 1;
+  return &kSwitchDriver;
+}
+
+bool queueSlotReport(uint8_t slot_index, const NintendoSwitchReport& report) {
+  SwitchSlotState& slot = g_slot_states[slot_index];
+  if (reportIsNeutral(report) && !slot.has_sent_non_neutral_report) {
+    slot.pending_report = report;
+    slot.report_dirty = false;
+    return true;
+  }
+
+  if (slot.report_in_flight && reportsEqual(report, slot.transfer_report)) {
+    return true;
+  }
+  if (slot.report_dirty && reportsEqual(report, slot.pending_report)) {
+    if (slot.report_in_flight) {
+      return true;
+    }
+    return slotCanTransfer(slot) ? startTransfer(slot_index) : true;
+  }
+  if (!slot.report_in_flight && slot.has_queued_report && reportsEqual(report, slot.last_queued_report)) {
+    return true;
+  }
+
+  slot.pending_report = report;
+  slot.report_dirty = true;
+  return slotCanTransfer(slot) ? startTransfer(slot_index) : true;
+}
+
+bool switchUsbInit() {
+  static bool initialized = false;
+  if (initialized) {
+    return true;
+  }
+
+  if (tinyusb_enable_interface(USB_INTERFACE_CUSTOM, static_cast<uint16_t>(g_interface_descriptors.size()),
+                               [](uint8_t* dst, uint8_t* itf) -> uint16_t {
+                                 g_base_interface = *itf;
+                                 buildDescriptors(*itf);
+                                 memcpy(dst, g_interface_descriptors.data(), g_interface_descriptors.size());
+                                 const uint8_t base_if = *itf;
+                                 *itf = static_cast<uint8_t>(base_if + config::kMaxControllerSlots);
+                                 return g_interface_descriptors.size();
+                               }) != ESP_OK) {
+    return false;
+  }
+
+  USB.VID(kNintendoSwitchVid);
+  USB.PID(kNintendoSwitchPid);
+  USB.usbClass(0);
+  USB.usbSubClass(0);
+  USB.usbProtocol(0);
+  USB.productName(config::kUsbSwitchProductName);
+  USB.manufacturerName("ESP32 Controller");
+  USB.serialNumber(config::kDeviceUuid);
+
+  initialized = true;
+  return true;
+}
+}  // namespace
+
+bool UsbSwitchGamepadBridge::begin() {
+  if (g_started) {
+    return true;
+  }
+  resetState();
+  if (!switchUsbInit()) {
+    return false;
+  }
+  USB.begin();
+  g_started = true;
+  debug_log::printf("USB host ready: transport=usb variant=switch board=%s vid=%04x pid=%04x\n", config::kBoardName,
+                    kNintendoSwitchVid, kNintendoSwitchPid);
+  return true;
+}
+
+void UsbSwitchGamepadBridge::loop() {
+  if (!g_started || !tud_ready()) {
+    return;
+  }
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    SwitchSlotState& slot = g_slot_states[i];
+    if (slot.report_dirty && !slot.report_in_flight) {
+      (void)startTransfer(i);
+    }
+  }
+}
 
 bool UsbSwitchGamepadBridge::resetConnection() {
   return false;
@@ -171,28 +490,32 @@ bool UsbSwitchGamepadBridge::setPairingEnabled(bool enabled) {
 }
 
 bool UsbSwitchGamepadBridge::send(const HostInputReport& report) {
-  if (!started_) {
-    return false;
-  }
-  active_slots_ = 1;
-  return g_usb_gamepads[0].send(report);
+  return sendSlots(&report, 1, 0x01);
 }
 
 bool UsbSwitchGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t report_count, uint32_t active_slot_mask) {
-  if (!started_ || reports == nullptr) {
+  ++g_send_attempt_count;
+  if (!g_started || reports == nullptr) {
     return false;
   }
 
   bool ok = true;
-  active_slots_ = 0;
-  const uint8_t capped_count = report_count > config::kMaxControllerSlots ? config::kMaxControllerSlots : report_count;
+  g_active_slots = multi_controller::countActiveSlots(report_count, active_slot_mask);
+  const uint8_t capped_count = multi_controller::cappedReportCount(report_count);
+  const uint32_t now_ms = millis();
+  const bool log_trace = shouldLogTrace(now_ms);
+  if (log_trace) {
+    debug_log::printf("[host] usb_switch sendSlots count=%u active=%lu capped=%u\n", report_count,
+                      static_cast<unsigned long>(active_slot_mask), capped_count);
+  }
   for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    const bool active = i < capped_count && (active_slot_mask & (1u << i)) != 0;
-    const HostInputReport& report = active ? reports[i] : HostInputReport{};
-    ok = g_usb_gamepads[i].send(report) && ok;
-    if (active) {
-      ++active_slots_;
+    const bool active = i < capped_count && multi_controller::slotIsActive(active_slot_mask, i);
+    const NintendoSwitchReport report = active ? reportFromHostInput(reports[i]) : NintendoSwitchReport{};
+    if (log_trace) {
+      debug_log::printf("[host] usb_switch queue slot=%u active=%u neutral=%u\n", static_cast<unsigned>(i),
+                        active ? 1u : 0u, reportIsNeutral(report) ? 1u : 0u);
     }
+    ok = queueSlotReport(i, report) && ok;
   }
   return ok;
 }
@@ -202,13 +525,30 @@ HostStatus UsbSwitchGamepadBridge::status() const {
   status.transport = "usb";
   status.variant = "switch";
   status.display_name = config::kUsbSwitchProductName;
-  status.ready = started_ && g_usb_gamepads[0].ready();
-  status.connected = started_ && g_usb_gamepads[0].mounted();
+  status.ready = g_started && tud_ready();
+  status.connected = g_started && tud_mounted();
   status.supports_pairing = false;
   status.pairing_enabled = false;
   status.advertising = false;
-  status.usb_active_slots = active_slots_;
+  status.usb_active_slots = g_active_slots;
+  status.usb_send_attempts = g_send_attempt_count;
+  status.usb_send_successes = g_send_success_count;
   return status;
+}
+
+extern "C" void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint16_t len) {
+  (void)report;
+  (void)len;
+  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+    SwitchSlotState& slot = g_slot_states[i];
+    if (slot.hid_instance == instance) {
+      slot.report_in_flight = false;
+      if (slot.report_dirty) {
+        (void)startTransfer(i);
+      }
+      break;
+    }
+  }
 }
 
 #endif
