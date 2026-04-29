@@ -11,14 +11,27 @@ log() {
 
 sync_repo_snapshot() {
   log "staging ${ROOT_DIR} -> ${PI_HOST}:${REMOTE_BASE_DIR}"
-  tar -C "${ROOT_DIR}" \
-    --exclude=".git" \
-    --exclude=".venv" \
-    --exclude=".platformio" \
-    --exclude="web/node_modules" \
-    --exclude="third_party/virtual-gamepad-lib/node_modules" \
-    -cf - . \
-    | ssh "${PI_HOST}" "mkdir -p '${REMOTE_BASE_DIR}' && tar -C '${REMOTE_BASE_DIR}' -xf -"
+  ssh "${PI_HOST}" "mkdir -p '${REMOTE_BASE_DIR}'"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete --delete-excluded \
+      --exclude='.git/' \
+      --exclude='.venv/' \
+      --exclude='.platformio/' \
+      --exclude='web/node_modules/' \
+      --exclude='third_party/virtual-gamepad-lib/node_modules/' \
+      -e ssh \
+      "${ROOT_DIR}/" \
+      "${PI_HOST}:${REMOTE_BASE_DIR}/"
+  else
+    tar -C "${ROOT_DIR}" \
+      --exclude=".git" \
+      --exclude=".venv" \
+      --exclude=".platformio" \
+      --exclude="web/node_modules" \
+      --exclude="third_party/virtual-gamepad-lib/node_modules" \
+      -cf - . \
+      | ssh "${PI_HOST}" "tar -C '${REMOTE_BASE_DIR}' -xf -"
+  fi
 }
 
 sync_repo_snapshot

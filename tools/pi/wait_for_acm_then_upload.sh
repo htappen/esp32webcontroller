@@ -161,7 +161,7 @@ while true; do
         CONTROLLER_DEVICE_UUID="${DEVICE_UUID}" \
         CONTROLLER_DEFAULT_STA_SSID="${STA_SSID_OVERRIDE}" \
         CONTROLLER_DEFAULT_STA_PASS="${STA_PASS_OVERRIDE}" \
-        SKIP_POST_UPLOAD_REBOOT="$([[ "${BOARD_OVERRIDE}" == "s3" && "${DEBUG_LOGS_REQUIRED}" == "1" ]] && printf '1' || printf '0')" \
+        SKIP_POST_UPLOAD_REBOOT="${SKIP_POST_UPLOAD_REBOOT:-0}" \
         SKIP_UPLOADFS="${SKIP_UPLOADFS}" \
         "${ROOT_DIR}/tools/upload_firmware.sh" \
           "${upload_args[@]}"

@@ -29,6 +29,28 @@ log() {
   printf '[pi-run] %s\n' "$1"
 }
 
+collect_changed_files() {
+  {
+    git -C "${ROOT_DIR}" diff --name-only --diff-filter=ACMRT HEAD -- . 2>/dev/null || true
+    git -C "${ROOT_DIR}" ls-files --others --exclude-standard 2>/dev/null || true
+  } | awk 'NF' | sort -u
+}
+
+needs_firmware_build() {
+  local path="$1"
+  case "${path}" in
+    firmware/*|firmware_minimal/*|third_party/*|web/*)
+      return 0
+      ;;
+    package.json|package-lock.json|pnpm-lock.yaml|npm-shrinkwrap.json)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 resolve_test_identity() {
   resolve_device_identity "test" "${DEVICE_UUID}"
   export CONTROLLER_DEVICE_UUID
@@ -77,8 +99,21 @@ resolve_test_identity
 stage_repo_snapshot
 ensure_remote_env
 
-log "building, flashing, and validating ${BOARD_NAME} (${HOST_MODE}) from the Pi"
-remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' CONTROLLER_DEBUG_LOGS='${CONTROLLER_DEBUG_LOGS:-0}' ./tools/pi/wait_for_acm_then_upload.sh --board '${BOARD_NAME}' --host-mode '${HOST_MODE}' --device-uuid '${CONTROLLER_DEVICE_UUID}' --port '${PORT}' --with-uploadfs"
+mapfile -t changed_files < <(collect_changed_files)
+firmware_build_required=0
+for path in "${changed_files[@]}"; do
+  if needs_firmware_build "${path}"; then
+    firmware_build_required=1
+    break
+  fi
+done
+
+if [[ "${firmware_build_required}" == "1" ]]; then
+  log "building, flashing, and validating ${BOARD_NAME} (${HOST_MODE}) from the Pi"
+  remote_exec "SKIP_WEB_SYNC_IF_PREBUILT=1 CONTROLLER_BOARD='${BOARD_NAME}' CONTROLLER_HOST_MODE='${HOST_MODE}' CONTROLLER_DEVICE_UUID='${CONTROLLER_DEVICE_UUID}' CONTROLLER_DEBUG_LOGS='${CONTROLLER_DEBUG_LOGS:-0}' ./tools/pi/wait_for_acm_then_upload.sh --board '${BOARD_NAME}' --host-mode '${HOST_MODE}' --device-uuid '${CONTROLLER_DEVICE_UUID}' --port '${PORT}' --with-uploadfs"
+else
+  log "skipping firmware upload; only non-firmware files changed"
+fi
 
 log "running remote Pi end-to-end test"
 if [[ "${HOST_MODE}" == "ble" ]]; then
