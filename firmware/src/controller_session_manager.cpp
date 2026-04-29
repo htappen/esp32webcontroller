@@ -34,7 +34,7 @@ uint8_t ControllerSessionManager::capacity() const {
 
 ControllerBindOutcome ControllerSessionManager::bindClient(uint8_t ws_client_num, const char* client_id, uint32_t now_ms) {
   ControllerBindOutcome outcome;
-  if (client_id == nullptr || client_id[0] == '\0' || strlen(client_id) >= kClientIdCapacity) {
+  if (client_id == nullptr || client_id[0] == '\0' || strlen(client_id) >= kControllerClientIdCapacity) {
     return outcome;
   }
 
@@ -169,6 +169,8 @@ ControllerFleetSnapshot ControllerSessionManager::snapshot(uint32_t now_ms) cons
     snapshot_slot.connected = slot.connected;
     snapshot_slot.reserved = slot.assigned && !slot.connected && !reservationExpired(slot, now_ms);
     snapshot_slot.active = slot.assigned && slot.connected;
+    strncpy(snapshot_slot.client_id, slot.client_id, sizeof(snapshot_slot.client_id) - 1);
+    snapshot_slot.client_id[sizeof(snapshot_slot.client_id) - 1] = '\0';
     snapshot_slot.state = slot.state;
     snapshot_slot.last_packet_age_ms = slot.connected && slot.last_packet_ms > 0 ? now_ms - slot.last_packet_ms : 0;
 

@@ -35,7 +35,7 @@ cleanup() {
 trap 'stop_serial_log; cleanup' EXIT
 
 log() {
-  printf '[pi-e2e] %s\n' "$1"
+  printf '[pi-e2e] %s\n' "$1" >&2
 }
 
 serial_log_file="${TMP_DIR}/serial.log"
@@ -90,7 +90,7 @@ assert_controller_link() {
   "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_link.py" \
     --before "${before_file}" \
     --after "${after_file}" \
-    --label "BLE controller"
+    --label "BLE controller" >&2
 }
 
 fetch_status() {

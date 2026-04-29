@@ -22,6 +22,11 @@ def main() -> int:
     parser.add_argument("--status", required=True)
     parser.add_argument("--expect-transport")
     parser.add_argument("--expect-variant")
+    parser.add_argument("--expect-assigned-slots", type=int)
+    parser.add_argument("--expect-active-slots", type=int)
+    parser.add_argument("--expect-reserved-slots", type=int)
+    parser.add_argument("--allow-disconnected", action="store_true")
+    parser.add_argument("--print-active-slot", action="store_true")
     parser.add_argument("--label", default="controller")
     args = parser.parse_args()
 
@@ -37,24 +42,45 @@ def main() -> int:
         raise AssertionError(
             f"unexpected host variant: {host.get('variant')!r} != {args.expect_variant!r}"
         )
-    if not controller.get("wsConnected"):
+    if not args.allow_disconnected and not controller.get("wsConnected"):
         raise AssertionError(f"{args.label} is not websocket-connected")
 
     assigned_slots = get_int(controller.get("assignedSlots"))
     active_slots = get_int(controller.get("activeSlots"))
-    if assigned_slots < 1:
-        raise AssertionError(f"{args.label} did not report any assigned slots")
-    if active_slots < 1:
-        raise AssertionError(f"{args.label} did not report any active slots")
-
     clients = controller.get("clients") or []
-    connected_clients = [
+    reserved_slots = len([client for client in clients if client.get("reserved")])
+    active_clients = [
         client
         for client in clients
         if client.get("assigned") and client.get("connected") and client.get("active")
     ]
-    if not connected_clients:
+
+    if args.expect_assigned_slots is not None and assigned_slots != args.expect_assigned_slots:
+        raise AssertionError(
+            f"{args.label} expected {args.expect_assigned_slots} assigned slots, got {assigned_slots}"
+        )
+    if args.expect_active_slots is not None and active_slots != args.expect_active_slots:
+        raise AssertionError(f"{args.label} expected {args.expect_active_slots} active slots, got {active_slots}")
+    if args.expect_reserved_slots is not None and reserved_slots != args.expect_reserved_slots:
+        raise AssertionError(
+            f"{args.label} expected {args.expect_reserved_slots} reserved slots, got {reserved_slots}"
+        )
+
+    if args.expect_assigned_slots is None and assigned_slots < 1:
+        raise AssertionError(f"{args.label} did not report any assigned slots")
+    if args.expect_active_slots is None and not args.allow_disconnected and active_slots < 1:
+        raise AssertionError(f"{args.label} did not report any active slots")
+    if not args.allow_disconnected and not active_clients:
         raise AssertionError(f"{args.label} did not expose an active assigned client")
+
+    if args.print_active_slot:
+        if len(active_clients) != 1:
+            raise AssertionError(f"{args.label} expected exactly one active client, found {len(active_clients)}")
+        slot_value = get_int(active_clients[0].get("slot"))
+        if slot_value < 1:
+            raise AssertionError(f"{args.label} did not expose a valid active slot number")
+        print(slot_value)
+        return 0
 
     print(
         json.dumps(
@@ -64,7 +90,8 @@ def main() -> int:
                     "wsConnected": controller.get("wsConnected"),
                     "assignedSlots": assigned_slots,
                     "activeSlots": active_slots,
-                    "activeClientCount": len(connected_clients),
+                    "reservedSlots": reserved_slots,
+                    "activeClientCount": len(active_clients),
                 },
             },
             separators=(",", ":"),

@@ -29,7 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 log() {
-  printf '[pi-usb-e2e] %s\n' "$1"
+  printf '[pi-usb-e2e] %s\n' "$1" >&2
 }
 
 serial_log_file="${TMP_DIR}/serial.log"
@@ -53,7 +53,7 @@ assert_serial_http_logs() {
     exit 1
   fi
 
-  printf '%s\n' "${matched_lines}"
+  printf '%s\n' "${matched_lines}" >&2
 }
 
 assert_no_boot_loop_signals() {
@@ -81,7 +81,7 @@ assert_controller_link() {
     --after "${after_file}" \
     --expect-transport "${EXPECTED_TRANSPORT}" \
     --expect-variant "${EXPECTED_VARIANT}" \
-    --label "USB controller"
+    --label "USB controller" >&2
 }
 
 assert_input_driver() {
@@ -90,6 +90,34 @@ assert_input_driver() {
     --device "${device_path}" \
     --expect-driver "${EXPECTED_INPUT_DRIVER}" \
     --label "USB controller input"
+}
+
+assert_separate_xinput_events() {
+  local log_file="$1"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_xinput_separate_events.py" --file "${log_file}"
+}
+
+assert_controller_status() {
+  local status_file="$1"
+  local expected_assigned="$2"
+  local expected_active="$3"
+  local expected_reserved="$4"
+  local allow_disconnected="${5:-0}"
+  local print_active_slot="${6:-0}"
+  local args=(
+    --status "${status_file}"
+    --expect-assigned-slots "${expected_assigned}"
+    --expect-active-slots "${expected_active}"
+    --expect-reserved-slots "${expected_reserved}"
+    --label "USB controller"
+  )
+  if [[ "${allow_disconnected}" == "1" ]]; then
+    args+=(--allow-disconnected)
+  fi
+  if [[ "${print_active_slot}" == "1" ]]; then
+    args+=(--print-active-slot)
+  fi
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_connected.py" "${args[@]}"
 }
 
 start_serial_log() {
@@ -105,7 +133,7 @@ start_serial_log() {
   log "capturing UART log from ${serial_port}"
   bash "${SCRIPT_DIR}/capture_uart_log.sh" "${serial_port}" 9999 "${serial_log_file}" &
   serial_log_pid=$!
-  sleep 0.2
+  sleep 1
 }
 
 stop_serial_log() {
@@ -197,14 +225,22 @@ capture_case() {
   local hold_open="$4"
   local log_file="${TMP_DIR}/${name}.jsonl"
   local status_before_file="${TMP_DIR}/${name}.status_before.json"
+  local status_during_file="${TMP_DIR}/${name}.status_during.json"
   local status_after_file="${TMP_DIR}/${name}.status_after.json"
 
   fetch_status "${HTTP_BASE_URL}" "${status_before_file}"
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --all-matching --duration "${duration}" --output "${log_file}" &
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "Microsoft X-Box 360 pad" --all-matching \
+    --duration "${duration}" --output "${log_file}" &
   local capture_pid=$!
-  sleep 0.2
+  sleep 0.8
   start_serial_log
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/neutral.json" \
+    --client-id "${name}-client" --hold-open 0.2
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}" &
+  local sender_pid=$!
+  sleep 0.5
+  fetch_status "${HTTP_BASE_URL}" "${status_during_file}"
+  wait "${sender_pid}"
   drain_serial_log
   stop_serial_log
   wait "${capture_pid}"
@@ -213,6 +249,23 @@ capture_case() {
   assert_serial_http_logs
   assert_serial_activity_logs
   assert_no_boot_loop_signals
+  printf '%s\n' "${log_file}"
+}
+
+capture_separated_case() {
+  local name="$1"
+  local duration="$2"
+  local first_packet_file="$3"
+  local second_packet_file="$4"
+  local log_file="${TMP_DIR}/${name}.jsonl"
+
+  first_log="$(
+    capture_case "${name}-button" "${duration}" "${first_packet_file}" 1.2
+  )"
+  second_log="$(
+    capture_case "${name}-axis" "${duration}" "${second_packet_file}" 1.2
+  )"
+  cat "${first_log}" "${second_log}" > "${log_file}"
   printf '%s\n' "${log_file}"
 }
 
@@ -307,7 +360,7 @@ JSON
 log "sending a neutral controller packet over WebSocket"
 fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/neutral.status_before.json"
 start_serial_log
-"${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/neutral.json" --hold-open 0.3
+"${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/neutral.json" --hold-open 0.9
 drain_serial_log
 stop_serial_log
 if [[ "${DEBUG_LOGS_REQUIRED}" == "1" && ! -s "${serial_log_file}" ]]; then
@@ -348,16 +401,27 @@ log "asserting neutral packet does not press buttons"
 neutral_log="$(capture_case neutral 1.0 "${TMP_DIR}/neutral.json" 0.6)"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${neutral_log}" --forbid-keydown
 
+log "asserting distinct XInput controllers receive distinct inputs"
+separate_log="$(capture_separated_case separate 3.0 "${TMP_DIR}/button_a.json" "${TMP_DIR}/axis_lx.json")"
+assert_separate_xinput_events "${separate_log}"
+
 log "asserting A button packet produces BTN_SOUTH press"
 button_log="$(capture_case button_a 1.2 "${TMP_DIR}/button_a.json" 0.9)"
+button_slot="$(assert_controller_status "${TMP_DIR}/button_a.status_during.json" 1 1 0 0 1)"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${button_log}" --expect-key 304=1
 
 log "asserting left-stick X packet produces positive ABS_X movement"
 axis_log="$(capture_case axis_lx 1.2 "${TMP_DIR}/axis_lx.json" 0.9)"
+axis_slot="$(assert_controller_status "${TMP_DIR}/axis_lx.status_during.json" 1 1 0 0 1)"
+if [[ "${axis_slot}" != "${button_slot}" ]]; then
+  printf '[pi-usb-e2e] expected reconnect to reuse slot %s, got %s\n' "${button_slot}" "${axis_slot}" >&2
+  exit 1
+fi
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${axis_log}" --expect-abs-range 0:20000:32767
 
 log "asserting packet timeout returns controls to neutral"
 timeout_log="$(capture_case timeout_reset 1.7 "${TMP_DIR}/timeout_press.json" 1.2)"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${timeout_log}" --expect-key 304=1 --expect-key 304=0 --expect-abs-range 0:20000:32767 --expect-abs-range 0:0:0
+assert_controller_status "${TMP_DIR}/timeout_reset.status_after.json" 1 0 1 1 0 1
 
 log "Pi direct WebSocket to USB test passed"

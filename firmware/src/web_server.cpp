@@ -138,6 +138,7 @@ bool WebServerBridge::begin() {
       client["connected"] = slot.connected;
       client["reserved"] = slot.reserved;
       client["active"] = slot.active;
+      client["clientId"] = slot.client_id;
       client["lastPacketAgeMs"] = slot.last_packet_age_ms;
     }
     doc["controller"]["debug"]["wsPacketsReceived"] = ws_packets_received_;

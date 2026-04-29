@@ -28,7 +28,6 @@ def main() -> int:
 
     before = load_json(args.before)
     after = load_json(args.after)
-    before_controller = before.get("controller", {})
     after_controller = after.get("controller", {})
     after_host = after.get("host", {})
 
@@ -40,25 +39,8 @@ def main() -> int:
       raise AssertionError(
           f"unexpected host variant: {after_host.get('variant')!r} != {args.expect_variant!r}"
       )
-    if not after_controller.get("wsConnected"):
-      raise AssertionError(f"{args.label} is not websocket-connected")
 
-    assigned_slots = get_int(after_controller.get("assignedSlots"))
-    active_slots = get_int(after_controller.get("activeSlots"))
-    if assigned_slots < 1:
-      raise AssertionError(f"{args.label} did not report any assigned slots")
-    if active_slots < 1:
-      raise AssertionError(f"{args.label} did not report any active slots")
-
-    clients = after_controller.get("clients") or []
-    connected_clients = [
-        client
-        for client in clients
-        if client.get("assigned") and client.get("connected") and client.get("active")
-    ]
-    if not connected_clients:
-      raise AssertionError(f"{args.label} did not expose an active assigned client")
-
+    before_controller = before.get("controller", {})
     before_applied = get_int(before_controller.get("debug", {}).get("wsPacketsApplied"))
     after_applied = get_int(after_controller.get("debug", {}).get("wsPacketsApplied"))
     if after_applied <= before_applied:
@@ -82,10 +64,6 @@ def main() -> int:
             {
                 "host": after_host,
                 "controller": {
-                    "wsConnected": after_controller.get("wsConnected"),
-                    "assignedSlots": assigned_slots,
-                    "activeSlots": active_slots,
-                    "activeClientCount": len(connected_clients),
                     "wsPacketsApplied": after_applied,
                     "wsPacketsReceived": after_received,
                 },

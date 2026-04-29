@@ -114,7 +114,7 @@ That script rebuilds, flashes, captures the boot log, and checks for startup fau
 
 The ESP32-S3 is connected to the Raspberry Pi for USB host, flash, and debug work. Before Pi-side flashing or validation, make sure the current workspace contents are copied to the Pi repo at `~/controller-pi-e2e`; do not assume the Pi checkout is already current.
 
-When rerunning a Pi-side build/flash/e2e flow, check whether any firmware or other source files have changed since the last sync. If there are no source changes, skip the reflash/reupload step and rerun the Pi validation only.
+When rerunning a Pi-side build/flash/e2e flow, check whether any firmware or other source files have changed since the last sync. Also check if the current build target (usb_switch, usb_xinput, etc.) has changed. If there are no source changes and the build target is the same, skip the reflash/reupload step and rerun the Pi validation only.
 
 The repo includes Pi-side orchestration for remote build, flash, and end-to-end validation:
 
@@ -188,27 +188,7 @@ For S3 `usb_xinput` startup debugging, `CONTROLLER_USB_XINPUT_DEFER_BEGIN=1` rem
 
 # Next Steps
 
-Session focus:
-
-- Target board: `CONTROLLER_BOARD=s3`
-- Target host mode: `CONTROLLER_HOST_MODE=usb_switch`
-- Runtime log path to verify: Pi UART on `/dev/serial0`
-
-Current goal:
-
-- E2E is working end-to-end now.
-- Focus on hardening and cleanup:
-  - tighten host/controller assertions
-  - reduce noisy logs
-  - keep panic decode and boot-loop detection reliable
-  - add host-side checks that prove the connected controller is the expected one
-  - improve failure messages so the next regression is faster to isolate
-- Use UART-based proof of runtime behavior first.
-- Use JTAG only as a secondary diagnostic path when a crash needs deeper post-mortem inspection.
-- Keep the GPIO-JTAG strap helpers disabled unless explicitly needed for a separate recovery/debug step.
-
-Minimal probe artifacts:
-
-- `firmware_minimal/` contains a separate UART probe project.
-- It currently prints simple probe strings from `setup()` and `loop()` over UART0.
-- It also has USB-JTAG and GPIO-JTAG debug wrappers, but the USB-JTAG attach was unstable and the GPIO-JTAG path did not examine the target with the current wiring.
+- `CONTROLLER_BOARD=s3` with `CONTROLLER_HOST_MODE=usb_switch` is the active path.
+- We also need to update the Switch tests to be functionally equivalent to the XInput ones, then make sure we get a full pass.
+- We need to rationalize the XInput implementation vs Switch -- what can be shared? What can be made look the same? Create an implementation plan.
+- We should also update the Bluetooth tests to check the same button conditions as USB ones, minus the tests around multiple controllers

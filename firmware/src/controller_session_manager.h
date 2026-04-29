@@ -6,6 +6,8 @@
 #include "config.h"
 #include "state_store.h"
 
+static constexpr size_t kControllerClientIdCapacity = 37;
+
 struct ControllerSlotSnapshot {
   bool assigned = false;
   bool connected = false;
@@ -13,6 +15,7 @@ struct ControllerSlotSnapshot {
   bool active = false;
   uint8_t slot_number = 0;
   uint32_t last_packet_age_ms = 0;
+  char client_id[kControllerClientIdCapacity] = {};
   ControllerState state;
 };
 
@@ -56,12 +59,11 @@ class ControllerSessionManager {
 
  private:
   static constexpr uint8_t kUnboundWsClient = 0xff;
-  static constexpr size_t kClientIdCapacity = 37;
 
   struct SlotRecord {
     bool assigned = false;
     bool connected = false;
-    char client_id[kClientIdCapacity] = {};
+    char client_id[kControllerClientIdCapacity] = {};
     uint8_t ws_client_num = kUnboundWsClient;
     uint32_t last_packet_ms = 0;
     uint32_t grace_deadline_ms = 0;
