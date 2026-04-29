@@ -162,6 +162,7 @@ For ESP32-S3 USB debugging, the preferred path is Raspberry Pi GPIO-JTAG, not th
 Use GPIO-JTAG when debugging USB transport behavior on S3, especially when the device enumerates but reports do not reach the host or the WebSocket path stops advancing after reboot.
 Use the Pi UART for runtime serial logs in USB mode; do not rely on `/dev/ttyACM*` for those logs. BLE mode can keep using the existing serial path if needed.
 If GPIO-JTAG fails to attach or the target ends up in a bad state, restart or power-cycle the board before retrying the debug helper. In practice, that usually means a fresh board reset or unplug/replug cycle on the Pi-connected S3.
+When UART logs include a panic backtrace, capture the log and run `tools/pi/decode_esp32_panic_log.py` or `tools/pi/decode_esp32_panic_log.sh` against it so the frames are traced back to source locations.
 
 Primary helper:
 

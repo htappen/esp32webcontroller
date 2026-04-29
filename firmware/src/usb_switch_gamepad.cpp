@@ -152,7 +152,7 @@ bool reportIsNeutral(const NintendoSwitchReport& report) {
 }
 
 bool slotCanTransfer(const SwitchSlotState& slot) {
-  return slot.hid_instance != 0xff && tud_hid_n_ready(slot.hid_instance);
+  return slot.control_in_ep != 0 && usbd_edpt_ready(slot.rhport, slot.control_in_ep);
 }
 
 void buildDescriptors(uint8_t base_interface) {
@@ -187,7 +187,7 @@ bool startTransfer(uint8_t slot_index) {
     return false;
   }
 
-  if (slot.hid_instance == 0xff || !tud_hid_n_ready(slot.hid_instance)) {
+  if (!slotCanTransfer(slot)) {
     return false;
   }
 
@@ -195,15 +195,16 @@ bool startTransfer(uint8_t slot_index) {
   const uint32_t now_ms = millis();
   static uint32_t last_start_trace_log_ms = 0;
   debug_log::printf(now_ms, &last_start_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
-                    "[host] usb_switch startTransfer slot=%u hid=%u dirty=%u in_flight=%u\n",
-                    static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.hid_instance),
+                    "[host] usb_switch startTransfer slot=%u ep=0x%02x dirty=%u in_flight=%u\n",
+                    static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.control_in_ep),
                     slot.report_dirty ? 1u : 0u, slot.report_in_flight ? 1u : 0u);
-  const uint8_t instance = slot.hid_instance;
-  slot.report_in_flight = tud_hid_n_report(instance, 0, &slot.transfer_report, sizeof(slot.transfer_report));
+  slot.report_in_flight = usbd_edpt_xfer(slot.rhport, slot.control_in_ep,
+                                         reinterpret_cast<uint8_t*>(&slot.transfer_report),
+                                         sizeof(slot.transfer_report));
   static uint32_t last_report_trace_log_ms = 0;
   debug_log::printf(now_ms, &last_report_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
-                    "[host] usb_switch report slot=%u instance=%u in_flight=%u\n",
-                    static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
+                    "[host] usb_switch report slot=%u ep=0x%02x in_flight=%u\n",
+                    static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.control_in_ep),
                     slot.report_in_flight ? 1u : 0u);
   if (slot.report_in_flight) {
     slot.report_dirty = false;
