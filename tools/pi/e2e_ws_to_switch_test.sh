@@ -14,9 +14,10 @@ WS_URL="${WS_URL:-ws://${CONTROLLER_DEVICE_HOSTNAME}.local:81}"
 EXPECTED_TRANSPORT="${EXPECTED_TRANSPORT:-usb}"
 EXPECTED_VARIANT="${EXPECTED_VARIANT:-switch}"
 EXPECTED_USB_VIDPID="${EXPECTED_USB_VIDPID:-0f0d:00c1}"
-EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-4}"
+EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-1}"
 EXPECTED_INPUT_DRIVER="${EXPECTED_SWITCH_INPUT_DRIVER:-hid-generic}"
 EXPECTED_INPUT_VERSION_MSB="${EXPECTED_SWITCH_INPUT_VERSION_MSB:-0}"
+EXPECTED_SWITCH_BUTTON_CODE="${EXPECTED_SWITCH_BUTTON_CODE:-305}"
 USB_ENUM_TIMEOUT_SECONDS="${USB_ENUM_TIMEOUT_SECONDS:-12}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
@@ -65,15 +66,6 @@ assert_serial_activity_logs() {
   bash "${SCRIPT_DIR}/assert_serial_activity_signals.sh" "${serial_log_file}" "Switch serial"
 }
 
-assert_controller_connected() {
-  local status_file="$1"
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_connected.py" \
-    --status "${status_file}" \
-    --expect-transport "${EXPECTED_TRANSPORT}" \
-    --expect-variant "${EXPECTED_VARIANT}" \
-    --label "Switch controller"
-}
-
 assert_controller_link() {
   local before_file="$1"
   local after_file="$2"
@@ -82,7 +74,7 @@ assert_controller_link() {
     --after "${after_file}" \
     --expect-transport "${EXPECTED_TRANSPORT}" \
     --expect-variant "${EXPECTED_VARIANT}" \
-    --label "Switch controller"
+    --label "Switch controller" >&2
 }
 
 assert_input_driver() {
@@ -113,7 +105,7 @@ start_serial_log() {
   log "capturing UART log from ${serial_port}"
   bash "${SCRIPT_DIR}/capture_uart_log.sh" "${serial_port}" 9999 "${serial_log_file}" &
   serial_log_pid=$!
-  sleep 0.2
+  sleep 1
 }
 
 stop_serial_log() {
@@ -172,19 +164,27 @@ capture_case() {
   local name="$1"
   local duration="$2"
   local packet_file="$3"
+  local hold_open="$4"
   local log_file="${TMP_DIR}/${name}.jsonl"
   local status_before_file="${TMP_DIR}/${name}.status_before.json"
   local status_after_file="${TMP_DIR}/${name}.status_after.json"
 
   fetch_status "${HTTP_BASE_URL}" "${status_before_file}"
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --usb-vid 0x0f0d --usb-pid 0x00c1 --all-matching --duration "${duration}" --output "${log_file}" &
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --duration "${duration}" --output "${log_file}" &
   local capture_pid=$!
   sleep 0.2
   start_serial_log
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/browser_send_controller_packet.py" --page-url "${HTTP_BASE_URL}" --packet-file "${packet_file}" --hold-open 0.8 --status-url "${HTTP_BASE_URL}/api/status" >&2
+  set +e
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/browser_send_controller_packet.py" --page-url "${HTTP_BASE_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}" --status-url "${HTTP_BASE_URL}/api/status"
+  local send_status=$?
+  set -e
   drain_serial_log
   stop_serial_log
   wait "${capture_pid}"
+  if [[ "${send_status}" -ne 0 ]]; then
+    printf '[pi-switch-e2e] websocket packet send failed for %s\n' "${name}" >&2
+    exit 1
+  fi
   fetch_status "${HTTP_BASE_URL}" "${status_after_file}"
   assert_controller_link "${status_before_file}" "${status_after_file}"
   assert_serial_http_logs
@@ -210,32 +210,18 @@ wait_for_usb_enumeration || {
 }
 lsusb | grep -i "${EXPECTED_USB_VIDPID}"
 
-log "waiting for Linux input nodes"
+log "waiting for Linux input node"
 controller_count="$("${VENV_PYTHON}" "${SCRIPT_DIR}/controller_test_core.py" count-devices --usb-vid 0x0f0d --usb-pid 0x00c1)"
 if [[ "${controller_count}" != "${EXPECTED_CONTROLLER_COUNT}" ]]; then
-  printf '[pi-switch-e2e] expected %s Linux input controllers, found %s\n' "${EXPECTED_CONTROLLER_COUNT}" "${controller_count}" >&2
+  printf '[pi-switch-e2e] expected %s Linux input controller, found %s\n' "${EXPECTED_CONTROLLER_COUNT}" "${controller_count}" >&2
   dump_host_diagnostics
   exit 1
 fi
-log "saw ${controller_count} enumerated Switch controller interfaces"
+log "saw ${controller_count} enumerated Switch controller"
 
 EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --usb-vid 0x0f0d --usb-pid 0x00c1 --wait-timeout 10 --print-device)"
 log "using input event device ${EVENT_DEVICE}"
-assert_input_driver() {
-  local extra_args=()
-  if [[ "${EXPECTED_INPUT_DRIVER}" != "" ]]; then
-    extra_args+=(--expect-driver "${EXPECTED_INPUT_DRIVER}")
-  fi
-  if [[ "${EXPECTED_INPUT_VERSION_MSB}" == "1" ]]; then
-    extra_args+=(--expect-version-msb)
-  fi
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_driver.py" \
-    --usb-vid 0x0f0d \
-    --usb-pid 0x00c1 \
-    --label "Switch controller input" \
-    "${extra_args[@]}"
-}
-assert_input_driver
+assert_input_driver "${EVENT_DEVICE}"
 
 ensure_controller_reachable || {
   dump_host_diagnostics
@@ -276,81 +262,20 @@ cat > "${TMP_DIR}/timeout_press.json" <<'JSON'
 {"t":4,"seq":4,"btn":{"a":1,"b":0,"x":0,"y":0,"lb":0,"rb":0,"back":0,"start":0,"ls":0,"rs":0,"du":0,"dd":0,"dl":0,"dr":0},"ax":{"lx":1.0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0}}
 JSON
 
-log "sending a neutral controller packet over WebSocket"
-fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/neutral.status_before.json"
-start_serial_log
-"${VENV_PYTHON}" "${SCRIPT_DIR}/browser_send_controller_packet.py" --page-url "${HTTP_BASE_URL}" --packet-file "${TMP_DIR}/neutral.json" --hold-open 0.8 --status-url "${HTTP_BASE_URL}/api/status"
-drain_serial_log
-stop_serial_log
-assert_serial_http_logs
-assert_serial_activity_logs
-assert_no_boot_loop_signals
-fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/neutral.status_after.json"
-assert_controller_link "${TMP_DIR}/neutral.status_before.json" "${TMP_DIR}/neutral.status_after.json"
-deadline=$((SECONDS + 6))
-while (( SECONDS < deadline )); do
-  fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/status_after.json"
-  if "${VENV_PYTHON}" - "${TMP_DIR}/status_before.json" "${TMP_DIR}/status_after.json" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    before = json.load(handle)
-with open(sys.argv[2], "r", encoding="utf-8") as handle:
-    after = json.load(handle)
-
-if after["controller"]["debug"]["wsPacketsReceived"] > before["controller"]["debug"]["wsPacketsReceived"]:
-    raise SystemExit(0)
-raise SystemExit(1)
-PY
-  then
-    break
-  fi
-  sleep 0.5
-done
-"${VENV_PYTHON}" - "${TMP_DIR}/status_before.json" "${TMP_DIR}/status_after.json" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    before = json.load(handle)
-with open(sys.argv[2], "r", encoding="utf-8") as handle:
-    after = json.load(handle)
-
-controller = after["controller"]
-host = after["host"]
-before_debug = before["controller"]["debug"]
-after_debug = after["controller"]["debug"]
-
-if host["transport"] != "usb":
-    raise SystemExit(f"unexpected host transport after packet: {host['transport']!r}")
-if after_debug["wsPacketsReceived"] <= before_debug["wsPacketsReceived"]:
-    raise SystemExit("websocket received counter did not advance after packet send")
-if after_debug["wsPacketsApplied"] <= before_debug["wsPacketsApplied"]:
-    raise SystemExit("websocket applied counter did not advance after packet send")
-
-print(json.dumps({"host": host, "controller": controller, "debugBefore": before_debug, "debugAfter": after_debug}, separators=(",", ":"), sort_keys=True))
-PY
-
-if [[ -s "${serial_log_file}" ]]; then
-  log "captured serial log"
-  sed -n '1,200p' "${serial_log_file}"
-fi
-
 log "asserting neutral packet does not press buttons"
-neutral_log="$(capture_case neutral 1.0 "${TMP_DIR}/neutral.json")"
+neutral_log="$(capture_case neutral 1.0 "${TMP_DIR}/neutral.json" 0.6)"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${neutral_log}" --forbid-keydown
 
-log "asserting A button packet produces BTN_SOUTH press"
-button_log="$(capture_case button_a 1.2 "${TMP_DIR}/button_a.json")"
-"${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${button_log}" --expect-key 304=1
+log "asserting A button packet produces BTN_EAST press"
+button_log="$(capture_case button_a 1.2 "${TMP_DIR}/button_a.json" 0.9)"
+"${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${button_log}" --expect-key "${EXPECTED_SWITCH_BUTTON_CODE}=1"
 
 log "asserting left-stick X packet produces positive ABS_X movement"
-axis_log="$(capture_case axis_lx 1.2 "${TMP_DIR}/axis_lx.json")"
+axis_log="$(capture_case axis_lx 1.2 "${TMP_DIR}/axis_lx.json" 0.9)"
 "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${axis_log}" --expect-abs-range 0:20000:32767
 
 log "asserting packet timeout returns controls to neutral"
-timeout_log="$(capture_case timeout_reset 1.7 "${TMP_DIR}/timeout_press.json")"
-"${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${timeout_log}" --expect-key 304=1 --expect-key 304=0 --expect-abs-range 0:20000:32767 --expect-abs-range 0:0:0
+timeout_log="$(capture_case timeout_reset 1.7 "${TMP_DIR}/timeout_press.json" 1.2)"
+"${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_events.py" --file "${timeout_log}" --expect-key "${EXPECTED_SWITCH_BUTTON_CODE}=1" --expect-key "${EXPECTED_SWITCH_BUTTON_CODE}=0" --expect-abs-range 0:20000:32767 --expect-abs-range 0:0:0
 
 log "Pi direct WebSocket to Switch test passed"

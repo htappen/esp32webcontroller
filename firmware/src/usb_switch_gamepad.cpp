@@ -30,10 +30,11 @@ constexpr uint8_t kHatLeft = 6;
 constexpr uint8_t kHatUpLeft = 7;
 constexpr uint8_t kHatCentered = 0x0f;
 constexpr uint8_t kTriggerButtonThreshold = 32;
-constexpr uint8_t kEndpointPacketSize = 8;
-constexpr uint8_t kEndpointIntervalMs = 4;
+constexpr uint8_t kEndpointPacketSize = 64;
+constexpr uint8_t kEndpointIntervalMs = 5;
 constexpr uint16_t kReportDescriptorLength = 80;
-constexpr uint16_t kInterfaceDescriptorLength = TUD_HID_DESC_LEN;
+constexpr uint16_t kInterfaceDescriptorLength = TUD_HID_INOUT_DESC_LEN;
+constexpr uint8_t kSwitchControllerCount = 1;
 
 constexpr uint8_t kButtonY = 0;
 constexpr uint8_t kButtonB = 1;
@@ -73,17 +74,22 @@ struct SwitchSlotState {
   bool report_dirty = false;
   bool has_queued_report = false;
   bool has_sent_non_neutral_report = false;
+  bool host_out_seen = false;
   uint8_t rhport = 0;
   uint8_t interface_number = 0;
   uint8_t control_in_ep = 0;
+  uint8_t control_out_ep = 0;
   uint8_t hid_instance = 0xff;
+  uint8_t protocol = HID_PROTOCOL_REPORT;
+  uint8_t idle_rate = 0;
   NintendoSwitchReport pending_report{};
   NintendoSwitchReport transfer_report{};
   NintendoSwitchReport last_queued_report{};
+  alignas(4) uint8_t control_out_buffer[kEndpointPacketSize] = {};
 };
 
-std::array<uint8_t, config::kMaxControllerSlots * kInterfaceDescriptorLength> g_interface_descriptors = {};
-SwitchSlotState g_slot_states[config::kMaxControllerSlots] = {};
+std::array<uint8_t, kSwitchControllerCount * kInterfaceDescriptorLength> g_interface_descriptors = {};
+SwitchSlotState g_slot_states[kSwitchControllerCount] = {};
 bool g_descriptors_built = false;
 uint8_t g_base_interface = 0;
 bool g_started = false;
@@ -152,7 +158,7 @@ bool reportIsNeutral(const NintendoSwitchReport& report) {
 }
 
 bool slotCanTransfer(const SwitchSlotState& slot) {
-  return slot.control_in_ep != 0 && usbd_edpt_ready(slot.rhport, slot.control_in_ep);
+  return slot.interfaces_opened && slot.control_in_ep != 0 && usbd_edpt_ready(slot.rhport, slot.control_in_ep);
 }
 
 void buildDescriptors(uint8_t base_interface) {
@@ -161,15 +167,10 @@ void buildDescriptors(uint8_t base_interface) {
   }
 
   uint8_t* dst = g_interface_descriptors.data();
-  for (uint8_t slot = 0; slot < config::kMaxControllerSlots; ++slot) {
-    const uint8_t in_ep = static_cast<uint8_t>(0x81 + slot);
-    const uint8_t interface_number = static_cast<uint8_t>(base_interface + slot);
-    const std::array<uint8_t, kInterfaceDescriptorLength> block = {
-        TUD_HID_DESCRIPTOR(interface_number, 0, 0, kReportDescriptorLength, in_ep, kEndpointPacketSize,
-                           kEndpointIntervalMs)};
-    memcpy(dst, block.data(), block.size());
-    dst += block.size();
-  }
+  const std::array<uint8_t, kInterfaceDescriptorLength> block = {
+      TUD_HID_INOUT_DESCRIPTOR(base_interface, 0, 0, kReportDescriptorLength, 0x02, 0x81, kEndpointPacketSize,
+                               kEndpointIntervalMs)};
+  memcpy(dst, block.data(), block.size());
   g_descriptors_built = true;
 }
 
@@ -219,21 +220,12 @@ bool startTransfer(uint8_t slot_index) {
 }
 
 int8_t slotIndexFromInterface(uint8_t interface_number) {
-  if (interface_number < g_base_interface) {
-    return -1;
-  }
-  const uint8_t slot_index = static_cast<uint8_t>(interface_number - g_base_interface);
-  return slot_index < config::kMaxControllerSlots ? static_cast<int8_t>(slot_index) : -1;
+  return interface_number == g_base_interface ? 0 : -1;
 }
 
 int8_t slotIndexFromEndpoint(uint8_t ep_addr) {
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    if (!g_slot_states[i].interfaces_opened) {
-      continue;
-    }
-    if (g_slot_states[i].control_in_ep == ep_addr) {
-      return static_cast<int8_t>(i);
-    }
+  if (g_slot_states[0].interfaces_opened && g_slot_states[0].control_in_ep == ep_addr) {
+    return 0;
   }
   return -1;
 }
@@ -262,7 +254,6 @@ uint16_t switchDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf
   slot.interfaces_opened = true;
   slot.rhport = rhport;
   slot.interface_number = desc_intf->bInterfaceNumber;
-  slot.hid_instance = static_cast<uint8_t>(slot_index);
 
   auto const* desc = reinterpret_cast<uint8_t const*>(desc_intf);
   uint16_t consumed = 0;
@@ -282,10 +273,17 @@ uint16_t switchDriverOpen(uint8_t rhport, tusb_desc_interface_t const* desc_intf
       }
       if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
         slot.control_in_ep = ep_desc->bEndpointAddress;
+      } else {
+        slot.control_out_ep = ep_desc->bEndpointAddress;
       }
     }
     consumed = static_cast<uint16_t>(consumed + len);
     desc = tu_desc_next(desc);
+  }
+
+  if (slot.control_out_ep != 0) {
+    slot.host_out_seen = usbd_edpt_xfer(rhport, slot.control_out_ep, slot.control_out_buffer,
+                                        sizeof(slot.control_out_buffer));
   }
 
   return consumed;
@@ -321,11 +319,27 @@ bool switchDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request
 
   switch (request->bRequest) {
     case HID_REQ_CONTROL_GET_REPORT:
-      return false;
+      return tud_control_xfer(rhport, request, &g_slot_states[slot_index].pending_report,
+                              sizeof(g_slot_states[slot_index].pending_report));
+    case HID_REQ_CONTROL_GET_IDLE: {
+      return tud_control_xfer(rhport, request, &g_slot_states[slot_index].idle_rate,
+                              sizeof(g_slot_states[slot_index].idle_rate));
+    }
+    case HID_REQ_CONTROL_GET_PROTOCOL: {
+      return tud_control_xfer(rhport, request, &g_slot_states[slot_index].protocol,
+                              sizeof(g_slot_states[slot_index].protocol));
+    }
     case HID_REQ_CONTROL_SET_REPORT:
     case HID_REQ_CONTROL_SET_IDLE:
-    case HID_REQ_CONTROL_SET_PROTOCOL:
+    case HID_REQ_CONTROL_SET_PROTOCOL: {
+      SwitchSlotState& slot = g_slot_states[slot_index];
+      if (request->bRequest == HID_REQ_CONTROL_SET_IDLE) {
+        slot.idle_rate = static_cast<uint8_t>(request->wValue >> 8);
+      } else if (request->bRequest == HID_REQ_CONTROL_SET_PROTOCOL) {
+        slot.protocol = static_cast<uint8_t>(request->wValue & 0xff);
+      }
       return tud_control_status(rhport, request);
+    }
     default:
       return false;
   }
@@ -333,7 +347,6 @@ bool switchDriverControlXfer(uint8_t rhport, uint8_t stage, tusb_control_request
 
 bool switchDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
   (void)rhport;
-  (void)xferred_bytes;
   const int8_t slot_index = slotIndexFromEndpoint(ep_addr);
   if (slot_index < 0) {
     return false;
@@ -342,6 +355,17 @@ bool switchDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
   SwitchSlotState& slot = g_slot_states[slot_index];
   if (result != XFER_RESULT_SUCCESS) {
     slot.report_in_flight = false;
+    if (ep_addr == slot.control_out_ep) {
+      slot.host_out_seen = false;
+    }
+    return true;
+  }
+
+  if (ep_addr == slot.control_out_ep) {
+    slot.host_out_seen = true;
+    (void)xferred_bytes;
+    slot.host_out_seen = usbd_edpt_xfer(slot.rhport, slot.control_out_ep, slot.control_out_buffer,
+                                        sizeof(slot.control_out_buffer));
     return true;
   }
 
@@ -355,11 +379,9 @@ bool switchDriverXfer(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uin
 void switchDriverSof(uint8_t rhport, uint32_t frame_count) {
   (void)rhport;
   (void)frame_count;
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    SwitchSlotState& slot = g_slot_states[i];
-    if (slot.interfaces_opened && slot.report_dirty && !slot.report_in_flight) {
-      (void)startTransfer(i);
-    }
+  SwitchSlotState& slot = g_slot_states[0];
+  if (slot.interfaces_opened && slot.report_dirty && !slot.report_in_flight) {
+    (void)startTransfer(0);
   }
 }
 
@@ -417,8 +439,7 @@ bool switchUsbInit() {
                                  g_base_interface = *itf;
                                  buildDescriptors(*itf);
                                  memcpy(dst, g_interface_descriptors.data(), g_interface_descriptors.size());
-                                 const uint8_t base_if = *itf;
-                                 *itf = static_cast<uint8_t>(base_if + config::kMaxControllerSlots);
+                                 *itf = static_cast<uint8_t>(*itf + kSwitchControllerCount);
                                  return g_interface_descriptors.size();
                                }) != ESP_OK) {
     return false;
@@ -429,8 +450,8 @@ bool switchUsbInit() {
   USB.usbClass(0);
   USB.usbSubClass(0);
   USB.usbProtocol(0);
-  USB.productName(config::kUsbSwitchProductName);
-  USB.manufacturerName("ESP32 Controller");
+  USB.productName("HORIPAD S");
+  USB.manufacturerName("HORI CO.,LTD.");
   USB.serialNumber(config::kDeviceUuid);
 
   initialized = true;
@@ -485,18 +506,16 @@ bool UsbSwitchGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t r
   }
 
   bool ok = true;
-  g_active_slots = multi_controller::countActiveSlots(report_count, active_slot_mask);
+  g_active_slots = (report_count > 0 && (active_slot_mask & 0x01u) != 0) ? 1 : 0;
   const uint8_t capped_count = multi_controller::cappedReportCount(report_count);
   const uint32_t now_ms = millis();
   static uint32_t last_send_trace_log_ms = 0;
   debug_log::printf(now_ms, &last_send_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
                     "[host] usb_switch sendSlots count=%u active=%lu capped=%u\n", report_count,
                     static_cast<unsigned long>(active_slot_mask), capped_count);
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    const bool active = i < capped_count && multi_controller::slotIsActive(active_slot_mask, i);
-    const NintendoSwitchReport report = active ? reportFromHostInput(reports[i]) : NintendoSwitchReport{};
-    ok = queueSlotReport(i, report) && ok;
-  }
+  const NintendoSwitchReport report =
+      (capped_count > 0 && (active_slot_mask & 0x01u) != 0) ? reportFromHostInput(reports[0]) : NintendoSwitchReport{};
+  ok = queueSlotReport(0, report) && ok;
   return ok;
 }
 
@@ -513,22 +532,14 @@ HostStatus UsbSwitchGamepadBridge::status() const {
   status.usb_active_slots = g_active_slots;
   status.usb_send_attempts = g_send_attempt_count;
   status.usb_send_successes = g_send_success_count;
-  return status;
-}
-
-extern "C" void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint16_t len) {
-  (void)report;
-  (void)len;
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
-    SwitchSlotState& slot = g_slot_states[i];
-    if (slot.hid_instance == instance) {
-      slot.report_in_flight = false;
-      if (slot.report_dirty) {
-        (void)startTransfer(i);
-      }
-      break;
-    }
+  const SwitchSlotState& slot = g_slot_states[0];
+  status.usb_interfaces_opened = slot.interfaces_opened;
+  status.usb_report_in_flight = slot.report_in_flight;
+  status.usb_report_dirty = slot.report_dirty;
+  if (slot.control_in_ep != 0) {
+    status.usb_control_in_ep = slot.control_in_ep;
   }
+  return status;
 }
 
 #endif

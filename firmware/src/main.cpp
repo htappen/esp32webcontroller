@@ -27,7 +27,7 @@ void setup() {
   g_sessions.reset();
   g_network.begin();
   g_host.begin();
-  g_sessions.setCapacity(strcmp(g_host.status().transport, "usb") == 0 ? config::kMaxControllerSlots : 1);
+  g_sessions.setCapacity(strcmp(g_host.status().variant, "switch") == 0 ? 1 : config::kMaxControllerSlots);
   g_web.begin();
 #if defined(CONTROLLER_BOARD_WROOM)
   debug_log::printf("ESP32 web BLE controller scaffold booted (%s)\n", config::kBoardName);
