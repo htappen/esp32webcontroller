@@ -90,7 +90,6 @@ bool g_started = false;
 uint8_t g_active_slots = 0;
 uint32_t g_send_attempt_count = 0;
 uint32_t g_send_success_count = 0;
-uint32_t g_last_trace_log_ms = 0;
 
 uint8_t axisToUint8(int16_t axis) {
   const int32_t shifted = static_cast<int32_t>(axis) + 32768;
@@ -156,14 +155,6 @@ bool slotCanTransfer(const SwitchSlotState& slot) {
   return slot.hid_instance != 0xff && tud_hid_n_ready(slot.hid_instance);
 }
 
-bool shouldLogTrace(uint32_t now_ms) {
-  if (g_last_trace_log_ms == 0 || now_ms - g_last_trace_log_ms >= config::kUsbSwitchTraceLogIntervalMs) {
-    g_last_trace_log_ms = now_ms;
-    return true;
-  }
-  return false;
-}
-
 void buildDescriptors(uint8_t base_interface) {
   if (g_descriptors_built) {
     return;
@@ -188,7 +179,6 @@ void resetState() {
   g_active_slots = 0;
   g_send_attempt_count = 0;
   g_send_success_count = 0;
-  g_last_trace_log_ms = 0;
 }
 
 bool startTransfer(uint8_t slot_index) {
@@ -203,24 +193,18 @@ bool startTransfer(uint8_t slot_index) {
 
   slot.transfer_report = slot.pending_report;
   const uint32_t now_ms = millis();
-  const bool log_trace = shouldLogTrace(now_ms);
-  if (log_trace) {
-    debug_log::printf("[host] usb_switch startTransfer slot=%u hid=%u dirty=%u in_flight=%u\n",
-                      static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.hid_instance),
-                      slot.report_dirty ? 1u : 0u, slot.report_in_flight ? 1u : 0u);
-  }
+  static uint32_t last_start_trace_log_ms = 0;
+  debug_log::printf(now_ms, &last_start_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
+                    "[host] usb_switch startTransfer slot=%u hid=%u dirty=%u in_flight=%u\n",
+                    static_cast<unsigned>(slot_index), static_cast<unsigned>(slot.hid_instance),
+                    slot.report_dirty ? 1u : 0u, slot.report_in_flight ? 1u : 0u);
   const uint8_t instance = slot.hid_instance;
-  if (log_trace) {
-    debug_log::printf("[host] usb_switch try report slot=%u instance=%u size=%u\n",
-                      static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
-                      static_cast<unsigned>(sizeof(slot.transfer_report)));
-  }
   slot.report_in_flight = tud_hid_n_report(instance, 0, &slot.transfer_report, sizeof(slot.transfer_report));
-  if (log_trace) {
-    debug_log::printf("[host] usb_switch report result slot=%u instance=%u in_flight=%u\n",
-                      static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
-                      slot.report_in_flight ? 1u : 0u);
-  }
+  static uint32_t last_report_trace_log_ms = 0;
+  debug_log::printf(now_ms, &last_report_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
+                    "[host] usb_switch report slot=%u instance=%u in_flight=%u\n",
+                    static_cast<unsigned>(slot_index), static_cast<unsigned>(instance),
+                    slot.report_in_flight ? 1u : 0u);
   if (slot.report_in_flight) {
     slot.report_dirty = false;
     slot.last_queued_report = slot.transfer_report;
@@ -503,18 +487,13 @@ bool UsbSwitchGamepadBridge::sendSlots(const HostInputReport* reports, uint8_t r
   g_active_slots = multi_controller::countActiveSlots(report_count, active_slot_mask);
   const uint8_t capped_count = multi_controller::cappedReportCount(report_count);
   const uint32_t now_ms = millis();
-  const bool log_trace = shouldLogTrace(now_ms);
-  if (log_trace) {
-    debug_log::printf("[host] usb_switch sendSlots count=%u active=%lu capped=%u\n", report_count,
-                      static_cast<unsigned long>(active_slot_mask), capped_count);
-  }
+  static uint32_t last_send_trace_log_ms = 0;
+  debug_log::printf(now_ms, &last_send_trace_log_ms, config::kUsbSwitchTraceLogIntervalMs, false,
+                    "[host] usb_switch sendSlots count=%u active=%lu capped=%u\n", report_count,
+                    static_cast<unsigned long>(active_slot_mask), capped_count);
   for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
     const bool active = i < capped_count && multi_controller::slotIsActive(active_slot_mask, i);
     const NintendoSwitchReport report = active ? reportFromHostInput(reports[i]) : NintendoSwitchReport{};
-    if (log_trace) {
-      debug_log::printf("[host] usb_switch queue slot=%u active=%u neutral=%u\n", static_cast<unsigned>(i),
-                        active ? 1u : 0u, reportIsNeutral(report) ? 1u : 0u);
-    }
     ok = queueSlotReport(i, report) && ok;
   }
   return ok;

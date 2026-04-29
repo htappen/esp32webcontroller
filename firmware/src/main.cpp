@@ -46,11 +46,9 @@ void loop() {
   if (now - g_last_report_ms >= config::kReportIntervalMs) {
     HostInputReport reports[config::kMaxControllerSlots] = {};
     const ControllerFleetSnapshot fleet = g_sessions.snapshot(now);
-    if (g_last_loop_trace_ms == 0 || now - g_last_loop_trace_ms >= config::kUsbSwitchTraceLogIntervalMs) {
-      g_last_loop_trace_ms = now;
-      debug_log::printf("[loop] report tick max=%u active=%u mask=0x%08lx\n", fleet.max_slots, fleet.active_slots,
-                        static_cast<unsigned long>(fleet.active_slot_mask));
-    }
+    debug_log::printf(now, &g_last_loop_trace_ms, config::kUsbSwitchTraceLogIntervalMs, false,
+                      "[loop] report tick max=%u active=%u mask=0x%08lx\n", fleet.max_slots, fleet.active_slots,
+                      static_cast<unsigned long>(fleet.active_slot_mask));
     for (uint8_t i = 0; i < fleet.max_slots; ++i) {
       if (fleet.slots[i].assigned) {
         reports[i] = InputMapper::map(fleet.slots[i].state);

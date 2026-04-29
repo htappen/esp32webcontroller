@@ -25,14 +25,6 @@ class WebServerBridge {
   WsBridge ws_parser_;
   uint32_t ws_packets_received_ = 0;
   uint32_t ws_packets_applied_ = 0;
-  uint32_t ws_packets_rejected_ = 0;
-  uint8_t ws_last_client_num_ = 0xff;
-  uint8_t ws_last_bind_slot_ = 0;
-  uint8_t ws_last_bind_result_ = 0xff;
-  size_t ws_last_message_len_ = 0;
-  char ws_last_event_[24] = "none";
-  char ws_last_reason_[32] = "none";
-  char ws_last_client_id_[37] = "";
   bool mdns_started_ = false;
   NetworkMode mdns_mode_ = NetworkMode::kAp;
   IPAddress mdns_ip_;
