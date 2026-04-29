@@ -77,6 +77,12 @@ dump_boot_log() {
   if [[ -s "${BOOT_LOG_FILE}" ]]; then
     log "captured boot UART log:"
     cat "${BOOT_LOG_FILE}"
+    if grep -qE 'Guru Meditation Error|IntegerDivideByZero|Backtrace:' "${BOOT_LOG_FILE}" 2>/dev/null; then
+      log "decoded boot UART panic:"
+      if [[ -x "${ROOT_DIR}/tools/pi/decode_esp32_panic_log.sh" ]]; then
+        "${ROOT_DIR}/tools/pi/decode_esp32_panic_log.sh" "${BOOT_LOG_FILE}" >&2 || true
+      fi
+    fi
   else
     log "no boot UART log captured from ${BOOT_LOG_PORT}"
   fi

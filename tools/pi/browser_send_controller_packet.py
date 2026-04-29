@@ -398,12 +398,12 @@ def main() -> int:
                 snapshot = session_snapshot()
                 log(f"initial browser controller snapshot: {json.dumps(snapshot, separators=(',', ':'))}")
                 while time.monotonic() < deadline:
-                    if snapshot and snapshot.get("connected"):
+                    if snapshot and snapshot.get("connected") and snapshot.get("slot") is not None:
                         break
                     time.sleep(0.2)
                     snapshot = session_snapshot()
                     log(f"browser controller snapshot: {json.dumps(snapshot, separators=(',', ':'))}")
-                if not snapshot or not snapshot.get("connected"):
+                if not snapshot or not snapshot.get("connected") or snapshot.get("slot") is None:
                     raise RuntimeError(f"browser controller did not connect: {snapshot}")
 
                 packet_js = json.dumps(packet, separators=(",", ":"))

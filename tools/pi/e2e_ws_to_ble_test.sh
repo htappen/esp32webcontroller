@@ -25,6 +25,7 @@ if [[ -z "${UART_PORT}" ]]; then
   UART_PORT="$(resolve_serial_port "" || true)"
 fi
 DEBUG_LOGS_REQUIRED="${CONTROLLER_DEBUG_LOGS:-0}"
+SERIAL_LOG_DRAIN_SECONDS="${CONTROLLER_SERIAL_LOG_DRAIN_SECONDS:-1}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
@@ -63,9 +64,33 @@ stop_serial_log() {
   fi
 }
 
+drain_serial_log() {
+  sleep "${SERIAL_LOG_DRAIN_SECONDS}"
+}
+
 fail() {
   printf '[pi-e2e] %s\n' "$1" >&2
   exit 1
+}
+
+assert_serial_activity_logs() {
+  bash "${SCRIPT_DIR}/assert_serial_activity_signals.sh" "${serial_log_file}" "BLE serial"
+}
+
+assert_controller_connected() {
+  local status_file="$1"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_connected.py" \
+    --status "${status_file}" \
+    --label "BLE controller"
+}
+
+assert_controller_link() {
+  local before_file="$1"
+  local after_file="$2"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_link.py" \
+    --before "${before_file}" \
+    --after "${after_file}" \
+    --label "BLE controller"
 }
 
 fetch_status() {
@@ -216,7 +241,10 @@ capture_case() {
   local packet_file="$3"
   local hold_open="$4"
   local log_file="${TMP_DIR}/${name}.jsonl"
+  local status_before_file="${TMP_DIR}/${name}.status_before.json"
+  local status_after_file="${TMP_DIR}/${name}.status_after.json"
 
+  fetch_status "${HTTP_BASE_URL}" "${status_before_file}"
   "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --duration "${duration}" --output "${log_file}" &
   local capture_pid=$!
   sleep 0.2
@@ -225,15 +253,20 @@ capture_case() {
   "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}"
   local send_status=$?
   set -e
+  drain_serial_log
   stop_serial_log
   wait "${capture_pid}"
   if [[ "${send_status}" -ne 0 ]]; then
     fail "websocket packet send failed for ${name}"
   fi
+  fetch_status "${HTTP_BASE_URL}" "${status_after_file}"
+  assert_controller_link "${status_before_file}" "${status_after_file}"
   if [[ "${DEBUG_LOGS_REQUIRED}" == "1" && ! -s "${serial_log_file}" ]]; then
     printf '[pi-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
     exit 1
   fi
+  assert_serial_activity_logs
+  bash "${SCRIPT_DIR}/assert_no_boot_loop_signals.sh" "${serial_log_file}" "BLE serial"
   printf '%s\n' "${log_file}"
 }
 

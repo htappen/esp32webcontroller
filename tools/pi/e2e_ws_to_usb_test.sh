@@ -16,8 +16,10 @@ EXPECTED_VARIANT="${EXPECTED_VARIANT:-pc}"
 EXPECTED_USB_VIDPID="${EXPECTED_USB_VIDPID:-045e:028e}"
 USB_ENUM_TIMEOUT_SECONDS="${USB_ENUM_TIMEOUT_SECONDS:-12}"
 EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-4}"
+EXPECTED_INPUT_DRIVER="${EXPECTED_XINPUT_INPUT_DRIVER:-xpad}"
 UART_PORT="${PI_UART_PORT:-/dev/serial0}"
 DEBUG_LOGS_REQUIRED="${CONTROLLER_DEBUG_LOGS:-0}"
+SERIAL_LOG_DRAIN_SECONDS="${CONTROLLER_SERIAL_LOG_DRAIN_SECONDS:-1}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="$(mktemp -d)"
@@ -32,6 +34,63 @@ log() {
 
 serial_log_file="${TMP_DIR}/serial.log"
 serial_log_pid=""
+
+assert_serial_http_logs() {
+  if [[ "${DEBUG_LOGS_REQUIRED}" != "1" ]]; then
+    return 0
+  fi
+  if [[ ! -s "${serial_log_file}" ]]; then
+    printf '[pi-usb-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
+    exit 1
+  fi
+
+  local matched_lines
+  matched_lines="$(grep -nE '\[http\] GET (\/|\/app\.js|\/app\.css|\/api\/status)' "${serial_log_file}" || true)"
+  if [[ -z "${matched_lines}" ]]; then
+    printf '[pi-usb-e2e] expected HTTP fetch logs but none were captured from %s\n' "${UART_PORT}" >&2
+    printf '[pi-usb-e2e] serial log tail:\n' >&2
+    tail -n 80 "${serial_log_file}" >&2 || true
+    exit 1
+  fi
+
+  printf '%s\n' "${matched_lines}"
+}
+
+assert_no_boot_loop_signals() {
+  bash "${SCRIPT_DIR}/assert_no_boot_loop_signals.sh" "${serial_log_file}" "USB serial"
+}
+
+assert_serial_activity_logs() {
+  bash "${SCRIPT_DIR}/assert_serial_activity_signals.sh" "${serial_log_file}" "USB serial"
+}
+
+assert_controller_connected() {
+  local status_file="$1"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_connected.py" \
+    --status "${status_file}" \
+    --expect-transport "${EXPECTED_TRANSPORT}" \
+    --expect-variant "${EXPECTED_VARIANT}" \
+    --label "USB controller"
+}
+
+assert_controller_link() {
+  local before_file="$1"
+  local after_file="$2"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_controller_link.py" \
+    --before "${before_file}" \
+    --after "${after_file}" \
+    --expect-transport "${EXPECTED_TRANSPORT}" \
+    --expect-variant "${EXPECTED_VARIANT}" \
+    --label "USB controller"
+}
+
+assert_input_driver() {
+  local device_path="$1"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_driver.py" \
+    --device "${device_path}" \
+    --expect-driver "${EXPECTED_INPUT_DRIVER}" \
+    --label "USB controller input"
+}
 
 start_serial_log() {
   local serial_port="${1:-${UART_PORT}}"
@@ -54,6 +113,10 @@ stop_serial_log() {
     kill "${serial_log_pid}" >/dev/null 2>&1 || true
     serial_log_pid=""
   fi
+}
+
+drain_serial_log() {
+  sleep "${SERIAL_LOG_DRAIN_SECONDS}"
 }
 
 dump_host_diagnostics() {
@@ -133,18 +196,23 @@ capture_case() {
   local packet_file="$3"
   local hold_open="$4"
   local log_file="${TMP_DIR}/${name}.jsonl"
+  local status_before_file="${TMP_DIR}/${name}.status_before.json"
+  local status_after_file="${TMP_DIR}/${name}.status_after.json"
 
+  fetch_status "${HTTP_BASE_URL}" "${status_before_file}"
   "${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device "${EVENT_DEVICE}" --all-matching --duration "${duration}" --output "${log_file}" &
   local capture_pid=$!
   sleep 0.2
   start_serial_log
   "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}"
+  drain_serial_log
   stop_serial_log
   wait "${capture_pid}"
-  if [[ "${DEBUG_LOGS_REQUIRED}" == "1" && ! -s "${serial_log_file}" ]]; then
-    printf '[pi-usb-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
-    exit 1
-  fi
+  fetch_status "${HTTP_BASE_URL}" "${status_after_file}"
+  assert_controller_link "${status_before_file}" "${status_after_file}"
+  assert_serial_http_logs
+  assert_serial_activity_logs
+  assert_no_boot_loop_signals
   printf '%s\n' "${log_file}"
 }
 
@@ -189,6 +257,13 @@ fi
 log "saw ${controller_count} enumerated XInput controller interfaces"
 EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "Microsoft X-Box 360 pad" --wait-timeout 10 --print-device)"
 log "using input event device ${EVENT_DEVICE}"
+assert_input_driver() {
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_driver.py" \
+    --device-name "Microsoft X-Box 360 pad" \
+    --expect-driver "${EXPECTED_INPUT_DRIVER}" \
+    --label "USB controller input"
+}
+assert_input_driver
 
 ensure_controller_reachable || {
   dump_host_diagnostics
@@ -230,13 +305,19 @@ cat > "${TMP_DIR}/timeout_press.json" <<'JSON'
 JSON
 
 log "sending a neutral controller packet over WebSocket"
+fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/neutral.status_before.json"
 start_serial_log
 "${VENV_PYTHON}" "${SCRIPT_DIR}/send_controller_packet.py" --url "${WS_URL}" --packet-file "${TMP_DIR}/neutral.json" --hold-open 0.3
+drain_serial_log
 stop_serial_log
 if [[ "${DEBUG_LOGS_REQUIRED}" == "1" && ! -s "${serial_log_file}" ]]; then
   printf '[pi-usb-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
   exit 1
 fi
+assert_serial_activity_logs
+assert_no_boot_loop_signals
+fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/neutral.status_after.json"
+assert_controller_link "${TMP_DIR}/neutral.status_before.json" "${TMP_DIR}/neutral.status_after.json"
 sleep 0.4
 fetch_status "${HTTP_BASE_URL}" "${TMP_DIR}/status_after.json"
 "${VENV_PYTHON}" - "${TMP_DIR}/status_before.json" "${TMP_DIR}/status_after.json" <<'PY'

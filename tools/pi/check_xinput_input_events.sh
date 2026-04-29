@@ -12,6 +12,7 @@ EXPECTED_USB_VIDPID="${EXPECTED_USB_VIDPID:-045e:028e}"
 DEVICE_NAME="${XINPUT_DEVICE_NAME:-Microsoft X-Box 360 pad}"
 USB_ENUM_TIMEOUT_SECONDS="${USB_ENUM_TIMEOUT_SECONDS:-12}"
 EXPECTED_CONTROLLER_COUNT="${EXPECTED_CONTROLLER_COUNT:-4}"
+EXPECTED_INPUT_DRIVER="${EXPECTED_XINPUT_INPUT_DRIVER:-xpad}"
 VENV_DIR="${PI_PYTHON_VENV_DIR:-${SCRIPT_DIR}/.venv-pi}"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 TMP_DIR="${XINPUT_EVENT_TMP_DIR:-$(mktemp -d)}"
@@ -111,6 +112,10 @@ log "saw ${controller_count} enumerated XInput controller interfaces"
 
 EVENT_DEVICE="$("${VENV_PYTHON}" "${SCRIPT_DIR}/capture_input_events.py" --device-name "${DEVICE_NAME}" --wait-timeout "${USB_ENUM_TIMEOUT_SECONDS}" --print-device)"
 log "using input event device ${EVENT_DEVICE}"
+"${VENV_PYTHON}" "${SCRIPT_DIR}/assert_input_driver.py" \
+  --device-name "${DEVICE_NAME}" \
+  --expect-driver "${EXPECTED_INPUT_DRIVER}" \
+  --label "XInput controller input"
 
 fetch_status "${TMP_DIR}/status_before.json"
 
