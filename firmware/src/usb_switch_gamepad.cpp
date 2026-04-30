@@ -478,7 +478,7 @@ void UsbSwitchGamepadBridge::loop() {
   if (!g_started || !tud_ready()) {
     return;
   }
-  for (uint8_t i = 0; i < config::kMaxControllerSlots; ++i) {
+  for (uint8_t i = 0; i < kSwitchControllerCount; ++i) {
     SwitchSlotState& slot = g_slot_states[i];
     if (slot.report_dirty && !slot.report_in_flight) {
       (void)startTransfer(i);

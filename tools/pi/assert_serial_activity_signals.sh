@@ -17,7 +17,7 @@ fi
 require_match() {
   local pattern="$1"
   local description="$2"
-  if ! grep -nE "${pattern}" "${LOG_FILE}" >/dev/null; then
+  if ! tr -d '\000' < "${LOG_FILE}" | grep -nE "${pattern}" >/dev/null; then
     printf '[serial-activity] missing %s in %s log\n' "${description}" "${LOG_LABEL}" >&2
     printf '[serial-activity] %s tail:\n' "${LOG_LABEL}" >&2
     tail -n 80 "${LOG_FILE}" >&2 || true
@@ -29,4 +29,3 @@ require_match '\[ws\] client [0-9]+ connected' 'websocket connect log'
 require_match '\[session\] assigned client_id=' 'session assignment log'
 require_match '\[session\] applied ws=' 'session apply log'
 require_match '\[ws\] client [0-9]+ disconnected' 'websocket disconnect log'
-

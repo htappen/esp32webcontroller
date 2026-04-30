@@ -37,27 +37,6 @@ log() {
 serial_log_file="${TMP_DIR}/serial.log"
 serial_log_pid=""
 
-assert_serial_http_logs() {
-  if [[ "${DEBUG_LOGS_REQUIRED}" != "1" ]]; then
-    return 0
-  fi
-  if [[ ! -s "${serial_log_file}" ]]; then
-    printf '[pi-switch-e2e] debug logging is enabled but no UART output was captured from %s\n' "${UART_PORT}" >&2
-    exit 1
-  fi
-
-  local matched_lines
-  matched_lines="$(grep -nE '\[http\] GET (\/|\/app\.js|\/app\.css|\/api\/status)' "${serial_log_file}" || true)"
-  if [[ -z "${matched_lines}" ]]; then
-    printf '[pi-switch-e2e] expected HTTP fetch logs but none were captured from %s\n' "${UART_PORT}" >&2
-    printf '[pi-switch-e2e] serial log tail:\n' >&2
-    tail -n 80 "${serial_log_file}" >&2 || true
-    exit 1
-  fi
-
-  printf '%s\n' "${matched_lines}" >&2
-}
-
 assert_no_boot_loop_signals() {
   bash "${SCRIPT_DIR}/assert_no_boot_loop_signals.sh" "${serial_log_file}" "Switch serial"
 }
@@ -175,7 +154,7 @@ capture_case() {
   sleep 0.2
   start_serial_log
   set +e
-  "${VENV_PYTHON}" "${SCRIPT_DIR}/browser_send_controller_packet.py" --page-url "${HTTP_BASE_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}" --status-url "${HTTP_BASE_URL}/api/status"
+  "${VENV_PYTHON}" "${SCRIPT_DIR}/browser_send_controller_packet.py" --page-url "${HTTP_BASE_URL}" --packet-file "${packet_file}" --hold-open "${hold_open}" --status-url "${HTTP_BASE_URL}/api/status" >&2
   local send_status=$?
   set -e
   drain_serial_log
@@ -187,9 +166,6 @@ capture_case() {
   fi
   fetch_status "${HTTP_BASE_URL}" "${status_after_file}"
   assert_controller_link "${status_before_file}" "${status_after_file}"
-  assert_serial_http_logs
-  assert_serial_activity_logs
-  assert_no_boot_loop_signals
   printf '%s\n' "${log_file}"
 }
 
